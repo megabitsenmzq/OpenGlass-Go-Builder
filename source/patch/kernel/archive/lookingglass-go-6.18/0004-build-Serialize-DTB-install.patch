@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jinyu Meng <megabitsenmzq@gmail.com>
+Date: Thu, 19 Nov 2026 00:00:00 +0900
+Subject: [PATCH] build: Serialize DTB installation
+
+Multiple architecture DTB targets create the same parent directories with
+install -D. Serialize their installation to avoid parallel mkdir failures.
+---
+ scripts/Makefile.dtbinst | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/scripts/Makefile.dtbinst b/scripts/Makefile.dtbinst
+index 5f3b3d4f0000..9a6d2f3f0000 100644
+--- a/scripts/Makefile.dtbinst
++++ b/scripts/Makefile.dtbinst
+@@ -43,3 +43,4 @@ __dtbs_install: $(addprefix $(dst)/, $(dtbs))
+ 	@:
+ 
+ .PHONY: $(PHONY)
++.NOTPARALLEL: __dtbs_install
+-- 
+2.56.0
+

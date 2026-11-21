@@ -1,0 +1,17 @@
+[Unit]
+Description=LKG Go media data
+DefaultDependencies=no
+Requires=lkg-firstboot-storage.service
+After=lkg-firstboot-storage.service
+Before=lkg-usb-disk.service
+Conflicts=umount.target
+Before=umount.target
+
+[Mount]
+What=/dev/disk/by-label/LKG_DATA
+Where=/home/lkg/data
+Type=exfat
+Options=uid=1000,gid=1000,fmask=0133,dmask=0022,iocharset=utf8,errors=remount-ro
+
+[Install]
+WantedBy=multi-user.target

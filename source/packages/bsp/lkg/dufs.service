@@ -1,0 +1,28 @@
+[Unit]
+Description=Dufs file server for LKG Go home directory
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=lkg
+Group=lkg
+WorkingDirectory=/home/lkg
+ExecStart=/usr/local/bin/dufs --bind 0.0.0.0 --port 5000 --allow-upload --allow-delete --allow-search --allow-archive /home/lkg
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/lkg
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

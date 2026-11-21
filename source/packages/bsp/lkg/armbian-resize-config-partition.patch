@@ -1,0 +1,11 @@
+--- a/usr/lib/armbian/armbian-resize-filesystem
++++ b/usr/lib/armbian/armbian-resize-filesystem
+@@ -151,6 +151,7 @@ do_expand_partition()
+ 	if [[ -n $newpartition ]]; then
+ 		{
+-			echo n; echo p; echo ; echo $(( $lastsector + 1 )); echo $newpartition
++			echo n; echo p; echo 2; echo $(( $lastsector + 1 )); echo +256M
++			echo n; echo p; echo 3; echo $(( $lastsector + 1 + 524288 )); echo $newpartition
+ 			echo w
+ 		} | fdisk $diskdev
+ 	fi

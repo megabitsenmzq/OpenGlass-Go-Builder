@@ -1,0 +1,7 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+[ "${1:-}" = "poweroff" ] || exit 0
+echo "MCU_POWEROFF_BEGIN" > /dev/kmsg 2>/dev/null || true
+/usr/local/bin/lkg-mcu poweroff > /dev/kmsg 2>&1 || true
+echo "MCU_POWEROFF_END" > /dev/kmsg 2>/dev/null || true
+exit 0

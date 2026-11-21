@@ -1,0 +1,5 @@
+config:
+  dts-directories:
+    - { source: "dt_64", target: "arch/arm64/boot/dts/allwinner" }
+  auto-patch-dt-makefile:
+    - { directory: "arch/arm64/boot/dts/allwinner", config-var: "CONFIG_ARCH_SUNXI", add-only: true }

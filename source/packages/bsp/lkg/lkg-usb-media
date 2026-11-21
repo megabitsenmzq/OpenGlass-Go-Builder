@@ -1,0 +1,82 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+MEDIA_ROOT=/home/lkg/data/media
+MOUNT_POINT=$MEDIA_ROOT/USB
+STATE_FILE=/run/lkg-usb-media-device
+
+add() {
+    name=$1
+    device=/dev/$name
+    fs_type=
+    options=ro,nosuid,nodev,noexec
+
+    [ -b "$device" ] || return 0
+    mountpoint -q /home/lkg/data || return 0
+    [ -d "$MEDIA_ROOT" ] || return 0
+    mountpoint -q "$MOUNT_POINT" && return 0
+    fs_type=$(blkid -o value -s TYPE "$device" 2>/dev/null || true)
+    [ -n "$fs_type" ] || return 0
+    case "$fs_type" in
+        vfat|exfat)
+            options="$options,uid=1000,gid=1000,fmask=0133,dmask=0022,iocharset=utf8"
+            ;;
+        ntfs|ntfs3)
+            options="$options,uid=1000,gid=1000,fmask=0133,dmask=0022"
+            ;;
+        ext2|ext3|ext4|iso9660|udf)
+            ;;
+        *)
+            logger -t lkg-usb-media "Skipping unsupported USB filesystem $fs_type on $device"
+            return 0
+            ;;
+    esac
+    mkdir -p "$MOUNT_POINT" || return 1
+    attempt=0
+    while ! mount -t "$fs_type" -o "$options" "$device" "$MOUNT_POINT"; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 3 ]; then
+            rmdir "$MOUNT_POINT" 2>/dev/null || true
+            logger -t lkg-usb-media "Unable to mount $device as $fs_type"
+            return 1
+        fi
+        sleep 1
+    done
+    printf '%s\n' "$name" > "$STATE_FILE"
+    logger -t lkg-usb-media "Mounted $device at $MOUNT_POINT"
+}
+
+remove() {
+    name=$1
+    mounted=
+
+    [ -f "$STATE_FILE" ] || return 0
+    mounted=$(cat "$STATE_FILE")
+    [ "$mounted" = "$name" ] || return 0
+    if mountpoint -q "$MOUNT_POINT"; then
+        if ! umount -l "$MOUNT_POINT"; then
+            logger -t lkg-usb-media "Unable to unmount $MOUNT_POINT"
+            return 1
+        fi
+    fi
+    rm -f "$STATE_FILE"
+    rmdir "$MOUNT_POINT" 2>/dev/null || true
+    logger -t lkg-usb-media "Removed $name from $MOUNT_POINT"
+}
+
+rescan() {
+    for path in /sys/class/block/sd*; do
+        [ -e "$path" ] || continue
+        add "${path##*/}" || true
+        mountpoint -q "$MOUNT_POINT" && break
+    done
+    return 0
+}
+
+case "${1:-}" in
+    add) add "$2" ;;
+    remove) remove "$2" ;;
+    rescan) rescan ;;
+    *) exit 2 ;;
+esac

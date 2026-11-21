@@ -1,0 +1,16 @@
+[Unit]
+Description=LKG Go USB mass-storage selection
+ConditionPathExists=/dev/mmcblk0p3
+ConditionPathExists=!/run/lkg-reboot-pending
+Requires=lkg-firstboot-storage.service
+After=lkg-firstboot-storage.service dev-mmcblk0p3.device local-fs.target
+Before=lkg-menu.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lkg-usb-disk start
+ExecStop=/usr/local/sbin/lkg-usb-disk stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

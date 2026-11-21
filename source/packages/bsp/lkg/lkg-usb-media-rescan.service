@@ -1,0 +1,10 @@
+[Unit]
+Description=LKG Go USB media rescan
+After=home-lkg-data.mount lkg-usb-disk.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lkg-usb-media rescan
+
+[Install]
+WantedBy=multi-user.target

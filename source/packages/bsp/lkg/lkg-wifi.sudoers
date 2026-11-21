@@ -1,0 +1,1 @@
+lkg ALL=(root) NOPASSWD: /usr/local/sbin/lkg-wifi

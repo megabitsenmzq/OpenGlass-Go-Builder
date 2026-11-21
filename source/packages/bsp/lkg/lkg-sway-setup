@@ -1,0 +1,743 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+if [ -x /usr/bin/imv-wayland ] && [ ! -e /usr/local/bin/imv ]; then
+    ln -sf /usr/bin/imv-wayland /usr/local/bin/imv
+fi
+
+# Prevent duplicate waybar instance if systemd user graphical-session target is triggered
+rm -f /etc/systemd/user/graphical-session.target.wants/waybar.service
+
+# 1. Screenshot helper
+cat >/usr/local/bin/lkg-screenshot <<'EOF'
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+DIR="/home/lkg/data/Screenshots"
+mkdir -p "$DIR"
+FILE="$DIR/screenshot-$(date +%Y%m%d-%H%M%S).png"
+grim "$FILE"
+notify-send "Screenshot Saved" "$(basename "$FILE")" || true
+EOF
+chmod 0755 /usr/local/bin/lkg-screenshot
+
+# 2. Native PipeWire volume helper (wpctl + compact mako progress bubble + tiny popup menu)
+cat >/usr/local/bin/lkg-volume <<'EOF'
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+show_bubble() {
+    out="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || echo 'Volume: 0.00')"
+    pct="$(printf '%s\n' "$out" | awk '{printf "%d", $2 * 100 + 0.5}')"
+    case "$out" in
+        *MUTED*)
+            notify-send -t 1400 \
+                -h string:x-canonical-private-synchronous:volume \
+                -h int:value:0 \
+                "Volume: Muted (${pct}%)"
+            ;;
+        *)
+            notify-send -t 1400 \
+                -h string:x-canonical-private-synchronous:volume \
+                -h int:value:"$pct" \
+                "Volume: ${pct}%"
+            ;;
+    esac
+}
+
+case "${1:-}" in
+    up)
+        wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
+        wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+
+        show_bubble
+        ;;
+    down)
+        wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-
+        show_bubble
+        ;;
+    mute)
+        wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+        show_bubble
+        ;;
+    popup)
+        if pkill -x fuzzel 2>/dev/null; then
+            exit 0
+        fi
+        out="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || echo 'Volume: 0.00')"
+        pct="$(printf '%s\n' "$out" | awk '{printf "%d", $2 * 100 + 0.5}')"
+        choice="$(printf '+10%%\n-10%%\nMute / Unmute\n100%%\n80%%\n60%%\n40%%\n20%%\n' | \
+            fuzzel --dmenu \
+                --anchor=top-right \
+                --x-margin=10 \
+                --y-margin=6 \
+                --width=13 \
+                --lines=8 \
+                --prompt="Vol ${pct}% > ")" || exit 0
+        case "$choice" in
+            "+10%")
+                wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
+                wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 10%+
+                ;;
+            "-10%")
+                wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 10%-
+                ;;
+            "Mute / Unmute")
+                wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+                ;;
+            100%|80%|60%|40%|20%)
+                wpctl set-mute @DEFAULT_AUDIO_SINK@ 0
+                wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "$choice"
+                ;;
+            *)
+                exit 0
+                ;;
+        esac
+        show_bubble
+        ;;
+    *)
+        show_bubble
+        ;;
+esac
+EOF
+chmod 0755 /usr/local/bin/lkg-volume
+
+# 3. Titlebar / Tab right-click window context menu
+cat >/usr/local/bin/lkg-window-menu <<'EOF'
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+if pkill -x fuzzel 2>/dev/null; then
+    exit 0
+fi
+
+choice="$(printf 'Close Window\nMove to Other Screen\nToggle Floating\nToggle Fullscreen\nLayout: Tabbed\nLayout: Split\n' | \
+    fuzzel --dmenu \
+        --width=16 \
+        --lines=6 \
+        --prompt="Window > ")" || exit 0
+
+case "$choice" in
+    "Close Window")
+        swaymsg kill
+        ;;
+    "Move to Other Screen")
+        swaymsg 'move container to output next'
+        ;;
+    "Toggle Floating")
+        swaymsg 'floating toggle'
+        ;;
+    "Toggle Fullscreen")
+        swaymsg 'fullscreen toggle'
+        ;;
+    "Layout: Tabbed")
+        swaymsg 'layout tabbed'
+        ;;
+    "Layout: Split")
+        swaymsg 'layout toggle split'
+        ;;
+esac
+EOF
+chmod 0755 /usr/local/bin/lkg-window-menu
+
+# 4. GStreamer Wayland hardware-accelerated video player wrapper
+cat >/usr/local/bin/lkg-gst-play <<'EOF'
+#!/bin/sh
+exec gst-play-1.0 --videosink=waylandsink "$@"
+EOF
+chmod 0755 /usr/local/bin/lkg-gst-play
+
+# 5. Virtual 1280x720@1.0 VNC display (HEADLESS-1) & wayvnc launcher
+cat >/usr/local/bin/lkg-vnc <<'EOF'
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+WAYVNC_DIR="/home/lkg/.config/wayvnc"
+mkdir -p "$WAYVNC_DIR"
+chmod 0700 "$WAYVNC_DIR"
+
+if [ ! -f "$WAYVNC_DIR/rsa_key.pem" ]; then
+    openssl genrsa -traditional -out "$WAYVNC_DIR/rsa_key.pem" 2048 2>/dev/null
+    chmod 0600 "$WAYVNC_DIR/rsa_key.pem"
+fi
+if [ ! -f "$WAYVNC_DIR/tls_key.pem" ] || [ ! -f "$WAYVNC_DIR/tls_cert.pem" ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes \
+        -keyout "$WAYVNC_DIR/tls_key.pem" \
+        -out "$WAYVNC_DIR/tls_cert.pem" \
+        -days 3650 -subj "/CN=lkg.local" 2>/dev/null
+    chmod 0600 "$WAYVNC_DIR/tls_key.pem" "$WAYVNC_DIR/tls_cert.pem"
+fi
+
+if [ -z "${SWAYSOCK:-}" ]; then
+    SWAY_PID="$(pidof sway | awk '{print $1}')"
+    if [ -n "$SWAY_PID" ] && [ -S "$XDG_RUNTIME_DIR/sway-ipc.1000.$SWAY_PID.sock" ]; then
+        export SWAYSOCK="$XDG_RUNTIME_DIR/sway-ipc.1000.$SWAY_PID.sock"
+    fi
+fi
+
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+        case "$sock" in
+            *.lock) continue ;;
+        esac
+        if [ -S "$sock" ]; then
+            export WAYLAND_DISPLAY="$(basename "$sock")"
+            break
+        fi
+    done
+fi
+
+i=0
+while [ $i -lt 30 ]; do
+    if swaymsg -t get_outputs >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.1
+    i=$((i + 1))
+done
+
+if ! swaymsg -t get_outputs | grep -q '"name": "HEADLESS-1"'; then
+    swaymsg create_output >/dev/null 2>&1 || true
+    sleep 0.2
+fi
+
+swaymsg 'output HEADLESS-1 resolution 1280x720 position 360 0 scale 1.0 bg #12151c solid_color' >/dev/null 2>&1 || true
+swaymsg 'workspace number 2; move workspace to output HEADLESS-1; workspace number 1' >/dev/null 2>&1 || true
+
+if ! pgrep -x wayvnc >/dev/null 2>&1; then
+    exec wayvnc --gpu --output=HEADLESS-1 --max-fps=30 0.0.0.0 5900
+fi
+EOF
+chmod 0755 /usr/local/bin/lkg-vnc
+
+# 6. Custom .desktop entries
+install -d -m 0755 /usr/local/share/applications
+
+cat >/usr/local/share/applications/lkg-return-menu.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Return to OpenGlass Menu
+GenericName=Exit Sway Desktop
+Comment=Exit Sway and return to the OpenGlass Go main menu
+Exec=swaymsg exit
+Icon=system-log-out
+Terminal=false
+Categories=System;
+Keywords=exit;logout;menu;openglass;lkg;
+EOF
+
+cat >/usr/local/share/applications/lkg-media-data.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Media Data Folder
+GenericName=Open /home/lkg/data
+Comment=Browse photos and videos in /home/lkg/data
+Exec=thunar /home/lkg/data
+Icon=folder-videos
+Terminal=false
+Categories=System;FileTools;FileManager;
+Keywords=data;media;files;thunar;
+EOF
+
+cat >/usr/local/share/applications/lkg-gst-play.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=GStreamer Video Player (HW)
+GenericName=Hardware Video Player
+Comment=Play videos with Cedrus V4L2 hardware decoding and Wayland zero-copy sink
+Exec=/usr/local/bin/lkg-gst-play %F
+Icon=multimedia-video-player
+Terminal=false
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/quicktime;video/x-matroska;video/webm;video/x-msvideo;video/mpeg;
+NoDisplay=false
+EOF
+
+# 7. User configuration directories
+install -d -o lkg -g lkg -m 0755 \
+    /home/lkg/.config \
+    /home/lkg/.config/sway \
+    /home/lkg/.config/waybar \
+    /home/lkg/.config/fuzzel \
+    /home/lkg/.config/foot \
+    /home/lkg/.config/mako \
+    /home/lkg/.config/gtk-3.0 \
+    /home/lkg/.config/xfce4/xfconf/xfce-perchannel-xml
+install -d -o lkg -g lkg -m 0700 /home/lkg/.config/wayvnc
+
+cat >/home/lkg/.config/wayvnc/config <<'EOF'
+use_relative_paths=true
+address=0.0.0.0
+port=5900
+enable_auth=true
+relax_encryption=true
+username=lkg
+password=nano
+rsa_private_key_file=rsa_key.pem
+private_key_file=tls_key.pem
+certificate_file=tls_cert.pem
+EOF
+chmod 0600 /home/lkg/.config/wayvnc/config
+
+cat >/home/lkg/.config/sway/config <<'EOF'
+# OpenGlass Go Sway configuration
+# Physical screen: HDMI-A-1 (1440x2560 portrait @ scale 4.0 -> 360x640 logical)
+# Virtual VNC screen: HEADLESS-1 (1280x720 landscape @ scale 1.0)
+
+set $mod Mod4
+set $alt Mod1
+set $left h
+set $down j
+set $up k
+set $right l
+set $term foot
+set $menu pkill -x fuzzel || fuzzel
+set $files thunar /home/lkg/data
+
+### Display & Seat
+output HDMI-A-1 position 0 0 scale 4.0
+output HEADLESS-1 resolution 1280x720 position 360 0 scale 1.0
+output * bg #12151c solid_color
+seat seat0 xcursor_theme Adwaita 12
+
+### Workspace to Screen assignments (Mode B dual-display)
+workspace 1 output HDMI-A-1
+workspace 2 output HEADLESS-1
+workspace 3 output HEADLESS-1
+workspace 4 output HEADLESS-1
+workspace 5 output HEADLESS-1
+
+### Input & Focus behavior
+focus_follows_mouse no
+
+input "type:keyboard" {
+    repeat_delay 250
+    repeat_rate 35
+}
+
+### Appearance & Layout
+font pango:WenQuanYi Micro Hei, DejaVu Sans 9
+workspace_layout tabbed
+default_orientation vertical
+default_border pixel 2
+default_floating_border pixel 2
+hide_edge_borders smart
+titlebar_padding 6 3
+
+# Colors:               border  bg      text    indicator child_border
+client.focused          #38bdf8 #1e293b #f8fafc #38bdf8   #38bdf8
+client.focused_inactive #334155 #0f172a #94a3b8 #334155   #334155
+client.unfocused        #1e293b #0f172a #64748b #1e293b   #1e293b
+client.urgent           #ef4444 #7f1d1d #fef2f2 #ef4444   #ef4444
+
+### Autostart services
+exec mako
+exec_always /usr/local/bin/lkg-vnc
+
+### Core Keybindings
+    # Terminal
+    bindsym $mod+Return exec $term
+    bindsym $alt+Return exec $term
+
+    # Application Launcher (Super+D, Super+Space, or Alt+Space)
+    bindsym $mod+d exec $menu
+    bindsym $mod+space exec $menu
+    bindsym $alt+space exec $menu
+
+    # File Manager (/home/lkg/data)
+    bindsym $mod+e exec $files
+    bindsym $mod+f exec $files
+
+    # Close focused window
+    bindsym $mod+Shift+q kill
+    bindsym $alt+F4 kill
+
+    # Screenshot to /home/lkg/data/Screenshots
+    bindsym Print exec /usr/local/bin/lkg-screenshot
+    bindsym $mod+p exec /usr/local/bin/lkg-screenshot
+
+    # Audio Volume Controls (direct PipeWire wpctl + mako bubble)
+    bindsym XF86AudioRaiseVolume exec /usr/local/bin/lkg-volume up
+    bindsym XF86AudioLowerVolume exec /usr/local/bin/lkg-volume down
+    bindsym XF86AudioMute exec /usr/local/bin/lkg-volume mute
+
+    # Send focused window or workspace to the other screen (HDMI-A-1 <-> HEADLESS-1)
+    bindsym $mod+o move container to output next
+    bindsym $mod+Shift+o move workspace to output next
+
+    # Drag/resize floating windows with $mod + mouse
+    floating_modifier $mod normal
+
+    # Reload Sway configuration
+    bindsym $mod+Shift+c reload
+
+    # Exit Sway and return to OpenGlass Go Menu
+    bindsym $mod+Shift+e exec swaymsg exit
+    bindsym $alt+Shift+q exec swaymsg exit
+
+### Navigation & Window Management
+    # Cycle focus rapidly with Super+Tab or Alt+Tab
+    bindsym $mod+Tab focus next
+    bindsym $mod+Shift+Tab focus prev
+    bindsym $alt+Tab focus next
+    bindsym $alt+Shift+Tab focus prev
+
+    # Move focus
+    bindsym $mod+$left focus left
+    bindsym $mod+$down focus down
+    bindsym $mod+$up focus up
+    bindsym $mod+$right focus right
+    bindsym $mod+Left focus left
+    bindsym $mod+Down focus down
+    bindsym $mod+Up focus up
+    bindsym $mod+Right focus right
+
+    # Move focused window
+    bindsym $mod+Shift+$left move left
+    bindsym $mod+Shift+$down move down
+    bindsym $mod+Shift+$up move up
+    bindsym $mod+Shift+$right move right
+    bindsym $mod+Shift+Left move left
+    bindsym $mod+Shift+Down move down
+    bindsym $mod+Shift+Up move up
+    bindsym $mod+Shift+Right move right
+
+### Workspaces (1 on device screen, 2-5 on VNC 720p screen)
+    bindsym $mod+1 workspace number 1
+    bindsym $mod+2 workspace number 2
+    bindsym $mod+3 workspace number 3
+    bindsym $mod+4 workspace number 4
+    bindsym $mod+5 workspace number 5
+
+    bindsym $mod+Shift+1 move container to workspace number 1
+    bindsym $mod+Shift+2 move container to workspace number 2
+    bindsym $mod+Shift+3 move container to workspace number 3
+    bindsym $mod+Shift+4 move container to workspace number 4
+    bindsym $mod+Shift+5 move container to workspace number 5
+
+### Layout switching
+    bindsym $mod+b splith
+    bindsym $mod+v splitv
+    bindsym $mod+s layout stacking
+    bindsym $mod+w layout tabbed
+    bindsym $mod+t layout toggle split
+
+    # Fullscreen & Floating
+    bindsym $mod+Shift+f fullscreen
+    bindsym $mod+Shift+space floating toggle
+    bindsym $mod+a focus parent
+
+### Titlebar / Tab Mouse Bindings (only triggered when clicking on window tabs/titlebars)
+    bindsym button2 kill
+    bindsym button3 exec /usr/local/bin/lkg-window-menu
+
+### Floating window rules for small dialogs
+for_window [app_id="xarchiver"] floating enable
+
+### Status Bar
+bar {
+    swaybar_command waybar
+}
+
+include /etc/sway/config.d/*
+EOF
+
+cat >/home/lkg/.config/waybar/config.jsonc <<'EOF'
+{
+    "layer": "top",
+    "position": "top",
+    "height": 24,
+    "spacing": 4,
+    "modules-left": ["custom/launcher", "sway/workspaces"],
+    "modules-center": ["clock"],
+    "modules-right": ["wireplumber", "custom/exit"],
+
+    "custom/launcher": {
+        "format": "Apps",
+        "tooltip-format": "Toggle Application Launcher",
+        "on-click": "pkill -x fuzzel || fuzzel",
+        "on-click-right": "thunar /home/lkg/data"
+    },
+    "sway/workspaces": {
+        "disable-scroll": false,
+        "all-outputs": false,
+        "format": "{name}"
+    },
+    "clock": {
+        "format": "{:%H:%M}",
+        "format-alt": "{:%m-%d %H:%M}",
+        "tooltip-format": "{:%Y-%m-%d %A}"
+    },
+    "wireplumber": {
+        "format": "Vol {volume}%",
+        "format-muted": "Muted",
+        "scroll-step": 5.0,
+        "on-click": "/usr/local/bin/lkg-volume popup",
+        "on-click-right": "/usr/local/bin/lkg-volume mute",
+        "on-scroll-up": "/usr/local/bin/lkg-volume up",
+        "on-scroll-down": "/usr/local/bin/lkg-volume down"
+    },
+    "custom/exit": {
+        "format": "Exit",
+        "tooltip-format": "Exit Sway and return to OpenGlass Go Menu",
+        "on-click": "swaymsg exit"
+    }
+}
+EOF
+
+cat >/home/lkg/.config/waybar/style.css <<'EOF'
+* {
+    border: none;
+    border-radius: 0;
+    font-family: "WenQuanYi Micro Hei", "DejaVu Sans", sans-serif;
+    font-size: 10px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    border-bottom: 1px solid #1e293b;
+}
+
+#custom-launcher {
+    background-color: #38bdf8;
+    color: #0f172a;
+    font-weight: bold;
+    padding: 0 7px;
+    margin: 2px 2px 2px 4px;
+    border-radius: 4px;
+}
+
+#workspaces button {
+    padding: 0 5px;
+    color: #94a3b8;
+    background: transparent;
+}
+
+#workspaces button.focused {
+    color: #38bdf8;
+    font-weight: bold;
+    border-bottom: 2px solid #38bdf8;
+}
+
+#clock {
+    font-weight: bold;
+    color: #f8fafc;
+    padding: 0 4px;
+}
+
+#wireplumber {
+    padding: 0 6px;
+    margin: 2px 1px;
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border-radius: 4px;
+}
+
+#wireplumber.muted {
+    color: #94a3b8;
+}
+
+#custom-exit {
+    background-color: #334155;
+    color: #f8fafc;
+    padding: 0 7px;
+    margin: 2px 4px 2px 2px;
+    border-radius: 4px;
+}
+EOF
+
+cat >/home/lkg/.config/fuzzel/fuzzel.ini <<'EOF'
+[main]
+font=WenQuanYi Micro Hei,DejaVu Sans:size=10
+prompt="> "
+terminal=foot -e
+layer=overlay
+exit-on-keyboard-focus-loss=no
+width=20
+lines=8
+horizontal-pad=14
+vertical-pad=10
+inner-pad=6
+image-size-ratio=0.6
+
+[colors]
+background=0f172af4
+text=f8fafcff
+prompt=38bdf8ff
+input=f8fafcff
+match=38bdf8ff
+selection=1e293bff
+selection-text=38bdf8ff
+selection-match=7dd3fcff
+border=38bdf8ff
+
+[border]
+width=2
+radius=10
+EOF
+
+cat >/home/lkg/.config/foot/foot.ini <<'EOF'
+font=DejaVu Sans Mono:size=9,WenQuanYi Micro Hei:size=9
+pad=4x4
+
+[scrollback]
+lines=2000
+
+[colors]
+alpha=0.96
+background=0f172a
+foreground=e2e8f0
+regular0=1e293b
+regular1=f87171
+regular2=4ade80
+regular3=facc15
+regular4=38bdf8
+regular5=c084fc
+regular6=2dd4bf
+regular7=cbd5e1
+bright0=475569
+bright1=fca5a5
+bright2=86efac
+bright3=fde047
+bright4=7dd3fc
+bright5=d8b4fe
+bright6=5eead4
+bright7=f8fafc
+EOF
+
+cat >/home/lkg/.config/mako/config <<'EOF'
+font=WenQuanYi Micro Hei 9.5
+width=185
+height=52
+margin=8
+padding=6,10
+border-size=2
+border-radius=8
+background-color=#0f172af2
+text-color=#f8fafc
+border-color=#38bdf8
+progress-color=over #38bdf855
+default-timeout=1500
+EOF
+
+cat >/home/lkg/.config/gtk-3.0/settings.ini <<'EOF'
+[Settings]
+gtk-application-prefer-dark-theme=1
+gtk-theme-name=Adwaita-dark
+gtk-icon-theme-name=Adwaita
+gtk-font-name=WenQuanYi Micro Hei 8
+gtk-cursor-theme-name=Adwaita
+gtk-cursor-theme-size=12
+gtk-toolbar-icon-size=GTK_ICON_SIZE_SMALL_TOOLBAR
+gtk-toolbar-style=GTK_TOOLBAR_ICONS
+EOF
+
+cat >/home/lkg/.config/gtk-3.0/gtk.css <<'EOF'
+/* Compact GTK3 stylesheet for OpenGlass Go (360x640 logical portrait & VNC) */
+
+headerbar,
+.titlebar {
+    min-height: 26px;
+    padding: 1px 4px;
+}
+
+toolbar,
+.toolbar {
+    min-height: 24px;
+    padding: 1px 2px;
+}
+
+toolbar button,
+.toolbar button,
+headerbar button,
+button {
+    min-height: 20px;
+    min-width: 20px;
+    padding: 2px 5px;
+}
+
+entry,
+spinbutton {
+    min-height: 22px;
+    padding: 1px 5px;
+}
+
+menubar,
+.menubar {
+    min-height: 20px;
+    padding: 0;
+}
+
+menubar > menuitem,
+.menubar > menuitem {
+    padding: 2px 6px;
+}
+
+menu menuitem,
+.menu menuitem,
+popover modelbutton {
+    min-height: 20px;
+    padding: 2px 8px;
+}
+
+notebook tab {
+    min-height: 20px;
+    padding: 2px 6px;
+}
+
+.sidebar row,
+placessidebar row,
+treeview.view {
+    min-height: 20px;
+    padding: 1px 4px;
+}
+
+statusbar {
+    min-height: 18px;
+    padding: 0 4px;
+}
+EOF
+
+cat >/home/lkg/.config/gtk-3.0/bookmarks <<'EOF'
+file:///home/lkg/data Media Data
+EOF
+
+cat >/home/lkg/.config/xfce4/xfconf/xfce-perchannel-xml/thunar.xml <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="thunar" version="1.0">
+  <property name="last-view" type="string" value="ThunarIconView"/>
+  <property name="last-icon-view-zoom-level" type="string" value="THUNAR_ZOOM_LEVEL_50_PERCENT"/>
+  <property name="last-details-view-zoom-level" type="string" value="THUNAR_ZOOM_LEVEL_38_PERCENT"/>
+  <property name="last-compact-view-zoom-level" type="string" value="THUNAR_ZOOM_LEVEL_50_PERCENT"/>
+  <property name="last-separator-position" type="int" value="105"/>
+  <property name="shortcuts-icon-size" type="string" value="THUNAR_ICON_SIZE_16"/>
+  <property name="tree-icon-size" type="string" value="THUNAR_ICON_SIZE_16"/>
+  <property name="last-location-bar" type="string" value="ThunarLocationEntry"/>
+  <property name="misc-small-toolbar-icons" type="bool" value="true"/>
+  <property name="misc-single-click" type="bool" value="false"/>
+</channel>
+EOF
+
+cat >/home/lkg/.config/mimeapps.list <<'EOF'
+[Default Applications]
+video/mp4=lkg-gst-play.desktop
+video/quicktime=lkg-gst-play.desktop
+video/x-matroska=lkg-gst-play.desktop
+video/webm=lkg-gst-play.desktop
+video/x-msvideo=lkg-gst-play.desktop
+video/mpeg=lkg-gst-play.desktop
+image/jpeg=imv.desktop
+image/png=imv.desktop
+image/webp=imv.desktop
+image/gif=imv.desktop
+text/plain=org.xfce.mousepad.desktop
+EOF
+
+chown -R lkg:lkg /home/lkg/.config
+update-desktop-database /usr/local/share/applications /usr/share/applications 2>/dev/null || true

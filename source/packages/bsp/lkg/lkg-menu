@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec /usr/bin/systemctl restart lkg-menu.service
+fi
+if [ "$(id -un)" = "lkg" ]; then
+    exec /usr/bin/sudo -n /usr/bin/systemctl restart lkg-menu.service
+fi
+printf '%s\n' "lkg-menu must be run as root or lkg" >&2
+exit 1

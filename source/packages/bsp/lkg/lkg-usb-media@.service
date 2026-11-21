@@ -1,0 +1,10 @@
+[Unit]
+Description=LKG Go USB media on %I
+BindsTo=dev-%i.device
+After=dev-%i.device home-lkg-data.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lkg-usb-media add %i
+ExecStop=/usr/local/sbin/lkg-usb-media remove %i
+RemainAfterExit=yes

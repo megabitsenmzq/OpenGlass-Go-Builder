@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jinyu Meng <megabitsenmzq@gmail.com>
+Date: Mon, 16 Nov 2026 00:00:00 +0900
+Subject: [PATCH] drm/sun4i: Enable DE33 NV12 scaling for Looking Glass Go
+
+The DE33 planes driver disables scaling and YUV formats because chroma
+upscaling requires the VI scaler. Enable the scaler on the three physical
+VI channels and expose NV12 on the primary video plane.
+
+Also restore the scaler global alpha after mixer initialization. Without
+this, Video Normal mode produces fully transparent output. The alpha fix
+is backported from upstream commit 583d99165a85 ("drm/sun4i: vi scaler:
+Restore opaque alpha in video modes").
+---
+ drivers/gpu/drm/sun4i/sun50i_planes.c    | 8 ++------
+ drivers/gpu/drm/sun4i/sun8i_vi_layer.c   | 7 +++----
+ drivers/gpu/drm/sun4i/sun8i_vi_scaler.c  | 2 ++
+ drivers/gpu/drm/sun4i/sun8i_vi_scaler.h  | 1 +
+ 4 files changed, 8 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun50i_planes.c b/drivers/gpu/drm/sun4i/sun50i_planes.c
+index 111111111111..222222222222 100644
+--- a/drivers/gpu/drm/sun4i/sun50i_planes.c
++++ b/drivers/gpu/drm/sun4i/sun50i_planes.c
+@@ -175,12 +175,8 @@ static const struct sun50i_planes_quirks sun50i_h616_planes_quirks = {
+ 	},
+ 	.cfg = {
+ 		.de_type	= SUN8I_MIXER_DE33,
+-		/*
+-		 * TODO: All planes support scaling, but driver needs
+-		 * improvements to properly support it.
+-		 */
+-		.scaler_mask    = 0,
+-		.scanline_yuv	= 4096,
++		.scaler_mask	= 0x7,
++		.scanline_yuv	= 4096,
+ 	},
+ };
+ 
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+index 111111111111..222222222222 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+@@ -405,10 +405,7 @@ static const u32 sun8i_vi_layer_de3_formats[] = {
+ 	DRM_FORMAT_YVU422,
+ };
+ 
+-/*
+- * TODO: DE33 VI planes naturally support YUV formats but
+- * driver needs improvements in order to support them.
+- */
++/* Additional YUV formats require validation with the DE33 scaler. */
+ static const u32 sun8i_vi_layer_de33_formats[] = {
+ 	DRM_FORMAT_ABGR1555,
+ 	DRM_FORMAT_ABGR2101010,
+@@ -429,6 +426,8 @@ static const u32 sun8i_vi_layer_de33_formats[] = {
+ 	DRM_FORMAT_RGBA8888,
+ 	DRM_FORMAT_RGBX8888,
+ 	DRM_FORMAT_XBGR8888,
+ 	DRM_FORMAT_XRGB8888,
++
++	DRM_FORMAT_NV12,
+ };
+ 
+ static const uint64_t sun8i_layer_modifiers[] = {
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_scaler.c b/drivers/gpu/drm/sun4i/sun8i_vi_scaler.c
+index 111111111111..222222222222 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_scaler.c
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_scaler.c
+@@ -975,6 +975,8 @@ void sun8i_vi_scaler_setup(struct sun8i_layer *layer,
+ 
+ 		regmap_write(layer->regs,
+ 			     SUN50I_SCALER_VSU_SCALE_MODE(base), val);
++		regmap_write(layer->regs,
++			     SUN50I_SCALER_VSU_GLB_ALPHA(base), 0xff);
+ 	}
+ 
+ 	regmap_write(layer->regs,
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_scaler.h b/drivers/gpu/drm/sun4i/sun8i_vi_scaler.h
+index 111111111111..222222222222 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_scaler.h
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_scaler.h
+@@ -36,6 +36,7 @@
+ #define SUN50I_SCALER_VSU_EDSCL_CTRL(base)		((base) + 0x28)
+ #define SUN50I_SCALER_VSU_ANGLE_THR(base)		((base) + 0x2c)
+ #define SUN8I_SCALER_VSU_OUTSIZE(base)		((base) + 0x40)
++#define SUN50I_SCALER_VSU_GLB_ALPHA(base)	((base) + 0x44)
+ #define SUN8I_SCALER_VSU_YINSIZE(base)		((base) + 0x80)
+ #define SUN8I_SCALER_VSU_YHSTEP(base)		((base) + 0x88)
+ #define SUN8I_SCALER_VSU_YVSTEP(base)		((base) + 0x8c)
+-- 
+2.43.0
+

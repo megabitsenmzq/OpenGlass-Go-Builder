@@ -1,0 +1,82 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+STATE_PATH=/sys/class/udc/musb-hdrc.4.auto/state
+MARKER=/run/lkg-usb-disk-mode
+DATA_MOUNT=/home/lkg/data
+
+mount_local() {
+    rm -f "$MARKER"
+    if [ -d /sys/module/g_mass_storage ] && ! rmmod g_mass_storage; then
+        logger -t lkg-usb-disk "Unable to remove USB gadget; refusing local data mount"
+        return 1
+    fi
+    modprobe exfat || return 1
+    if ! mountpoint -q "$DATA_MOUNT" && ! mount "$DATA_MOUNT"; then
+        logger -t lkg-usb-disk "Unable to mount local data partition"
+        return 1
+    fi
+}
+
+desktop() {
+    if [ "$(id -u)" -ne 0 ]; then
+        exec /usr/bin/sudo -n "$0" desktop
+    fi
+    if [ -e /etc/systemd/system/lkg-usb-disk.service ]; then
+        unit=lkg-usb-disk.service
+    elif [ -e /etc/systemd/system/lkg-usb-disk-test.service ]; then
+        unit=lkg-usb-disk-test.service
+    else
+        logger -t lkg-usb-disk "No USB disk service found"
+        return 1
+    fi
+    exec /usr/bin/systemctl start "$unit" lkg-usb-mode-watch.service
+}
+
+start() {
+    rm -f "$MARKER"
+    if mountpoint -q "$DATA_MOUNT" && ! umount "$DATA_MOUNT"; then
+        logger -t lkg-usb-disk "Unable to unmount data partition; refusing USB export"
+        return 1
+    fi
+
+    modprobe g_mass_storage \
+        file=/dev/mmcblk0p3 \
+        ro=0 \
+        removable=1 \
+        idVendor=0x1d6b \
+        idProduct=0x0104 \
+        iManufacturer=LKG \
+        iProduct=LKG_USB_Data \
+        iSerialNumber=LKGDATA || return 1
+
+    count=0
+    while [ "$count" -lt 5 ]; do
+        if [ -r "$STATE_PATH" ] && [ "$(cat "$STATE_PATH")" = "configured" ]; then
+            : > "$MARKER"
+            logger -t lkg-usb-disk "USB host configured; keeping mass-storage mode and skipping menu"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if ! mount_local; then
+        logger -t lkg-usb-disk "No USB host, but mounting data partition failed; menu will remain disabled"
+        return 1
+    fi
+    logger -t lkg-usb-disk "No USB host configured; data mounted and continuing normal menu startup"
+}
+
+stop() {
+    rm -f "$MARKER"
+    rmmod g_mass_storage 2>/dev/null || true
+}
+
+case "${1:-start}" in
+    start) start ;;
+    stop) stop ;;
+    local) mount_local ;;
+    desktop) desktop ;;
+    *) exit 2 ;;
+esac

@@ -1,0 +1,2 @@
+lkg ALL=(root) NOPASSWD: /usr/bin/systemctl restart lkg-menu.service
+lkg ALL=(root) NOPASSWD: /usr/local/sbin/lkg-usb-disk desktop

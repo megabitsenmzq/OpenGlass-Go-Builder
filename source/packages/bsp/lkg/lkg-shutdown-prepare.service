@@ -1,0 +1,15 @@
+[Unit]
+Description=Prepare LKG Go Wi-Fi hardware for power off
+DefaultDependencies=no
+Requires=poweroff.target
+Before=poweroff.target
+
+[Service]
+Type=oneshot
+TimeoutSec=10
+ExecStart=/usr/local/sbin/lkg-shutdown-prepare
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=poweroff.target

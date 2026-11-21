@@ -1,0 +1,18 @@
+[Unit]
+Description=LKG Go Menu
+Wants=seatd.service user@1000.service
+Requires=lkg-mcu.service
+After=seatd.service user@1000.service lkg-mcu.service
+
+[Service]
+Type=simple
+User=lkg
+Group=lkg
+SupplementaryGroups=video render input dialout netdev audio
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/home/lkg/bin/lkg-menu
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

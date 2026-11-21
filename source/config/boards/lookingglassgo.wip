@@ -1,0 +1,150 @@
+BOARD_NAME="Looking Glass Go"
+BOARD_VENDOR="lookingglass"
+BOARDFAMILY="sun50iw9"
+BOARD_MAINTAINER=""
+INTRODUCED="2024"
+BOOTCONFIG="lookingglass_go_defconfig"
+BOOT_FDT_FILE="allwinner/sun50i-h618-lookingglass-nano.dtb"
+KERNEL_TARGET="legacy,current"
+KERNEL_TEST_TARGET="legacy,current"
+IMAGE_PARTITION_TABLE="msdos"
+SERIALCON="ttyS0"
+HAS_VIDEO_OUTPUT="yes"
+FORCE_BOOTSCRIPT_UPDATE="yes"
+EXTRAWIFI="no"
+PACKAGE_LIST_BOARD="kbd wpasupplicant sudo python3-yaml openssh-server avahi-daemon sway seatd foot fuzzel waybar thunar thunar-archive-plugin xarchiver mousepad micro imv wl-clipboard grim slurp mako-notifier libnotify-bin htop pulsemixer fonts-wqy-microhei ranger mc wayvnc unzip 7zip bzip2 xz-utils file xdg-utils openssl adwaita-icon-theme sound-theme-freedesktop ffmpeg gstreamer1.0-plugins-base gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire gstreamer1.0-tools pipewire-audio wireplumber libdrm2 libgbm1 libegl1 libgles2 libpng16-16t64 libjpeg62-turbo libheif1 libqrencode4 libglib2.0-0t64 zlib1g libfreetype6 fonts-dejavu-core dbus polkitd exfatprogs overlayroot busybox-static"
+INCLUDE_HOME_DIR="yes"
+
+function post_family_config__lookingglass_go_sources() {
+	local version_lock="${USERPATCHES_PATH}/lookingglass-go-versions.conf"
+	if [[ -f "${version_lock}" ]]; then
+		source "${version_lock}"
+	elif [[ -f "${USERPATCHES_PATH}/lookingglass-go-kernel.conf" ]]; then
+		source "${USERPATCHES_PATH}/lookingglass-go-kernel.conf"
+	fi
+	: "${LKG_UBOOT_TAG:?Provide userpatches/lookingglass-go-versions.conf with LKG_UBOOT_TAG}"
+	: "${LKG_ATF_TAG:?Provide userpatches/lookingglass-go-versions.conf with LKG_ATF_TAG}"
+	declare -g BOOTBRANCH="tag:${LKG_UBOOT_TAG}"
+	declare -g BOOTPATCHDIR="v2026.10-sunxi64"
+	declare -g BOOTSCRIPT="boot-lookingglass-go.cmd:boot.cmd"
+	declare -g ATFBRANCH="tag:${LKG_ATF_TAG}"
+	declare -g ATF_PLAT="sun50i_h616"
+	declare -g ATF_TARGET_MAP="PLAT=sun50i_h616 DEBUG=1 bl31;;build/sun50i_h616/debug/bl31.bin"
+	if [[ "${BRANCH}" == "current" ]]; then
+		: "${LKG_KERNEL_COMMIT:?Provide userpatches/lookingglass-go-versions.conf with the verified stable-kernel commit}"
+		declare -g KERNELBRANCH="commit:${LKG_KERNEL_COMMIT}"
+		function kernel_prepare_bare_repo_from_oras_gitball() {
+			if [[ ! -d "${kernel_git_bare_tree}/.git" ]]; then
+				run_host_command_logged rm -rf "${kernel_git_bare_tree}"
+				run_host_command_logged mkdir -p "${kernel_git_bare_tree%/*}"
+				run_host_command_logged git clone --filter=blob:none --no-checkout "${KERNELSOURCE}" "${kernel_git_bare_tree}"
+			fi
+			run_host_command_logged git -C "${kernel_git_bare_tree}" fetch --filter=blob:none origin "${LKG_KERNEL_COMMIT}"
+			run_host_command_logged mkdir -p "${kernel_git_bare_tree}/${bare_tree_done_marker_file%/*}"
+			run_host_command_logged touch "${kernel_git_bare_tree}/${bare_tree_done_marker_file}"
+			git_ensure_safe_directory "${kernel_git_bare_tree}"
+		}
+		declare -g KERNELPATCHDIR="${KERNELPATCHDIR} archive/lookingglass-go-${KERNEL_MAJOR_MINOR}"
+	fi
+}
+
+function custom_kernel_config__lookingglass_go_console() {
+	[[ "${BRANCH}" == "current" ]] || return 0
+	if [[ ! -f .config ]]; then
+		kernel_config_modifying_hashes+=("lookingglass-go-console-v2=FRAMEBUFFER_CONSOLE:y,FRAMEBUFFER_CONSOLE_ROTATION:y,FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER:n,FONTS:y,FONT_TER16x32:y")
+		return 0
+	fi
+	kernel_config_set_y FRAMEBUFFER_CONSOLE
+	kernel_config_set_y FRAMEBUFFER_CONSOLE_ROTATION
+	kernel_config_set_n FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER
+	kernel_config_set_y FONTS
+	run_host_command_logged ./scripts/config --keep-case --enable FONT_TER16x32
+	kernel_config_modifying_hashes+=("FONT_TER16x32=y")
+}
+
+function post_family_tweaks__lookingglass_go_firmware() {
+	run_host_command_logged mkdir -p "${SDCARD}/lib/firmware/rtl_bt"
+	run_host_command_logged cp -v "${SRC}/packages/blobs/lkg/rtl8723ds_fw.bin" "${SDCARD}/lib/firmware/rtl_bt/rtl8723ds_fw.bin"
+	run_host_command_logged cp -v "${SRC}/packages/blobs/lkg/rtl8723ds_config.bin" "${SDCARD}/lib/firmware/rtl_bt/rtl8723ds_config.bin"
+	if [[ "${BRANCH}" == "current" ]]; then
+		install -d "${SDCARD}/lib/firmware/edid"
+		install -m 0644 "${SRC}/packages/blobs/lkg/LCD_0598AUOQHM01.bin" "${SDCARD}/lib/firmware/edid/LCD_0598AUOQHM01.bin"
+		install -m 0755 "${SRC}/packages/bsp/lkg/lkg-edid.sh" "${SDCARD}/usr/share/initramfs-tools/hooks/lkg-edid"
+		chroot_sdcard update-initramfs -u -k all
+	fi
+}
+
+function post_family_tweaks__lookingglass_go_userspace() {
+	printf 'lkg\n' > "${SDCARD}/etc/hostname"
+	sed -i 's/lookingglassgo/lkg/g' "${SDCARD}/etc/hosts"
+	if ! chroot_sdcard id -u lkg; then
+		chroot_sdcard useradd --uid 1000 --create-home --shell /bin/bash --groups sudo,video,render,input,dialout,netdev,audio lkg
+	fi
+	chroot_sdcard usermod --uid 1000 --append --groups sudo,video,render,input,dialout,netdev,audio lkg
+	chroot_sdcard install -d -o lkg -g lkg /home/lkg /home/lkg/.config /home/lkg/.config/sway /home/lkg/bin /home/lkg/data
+	chroot_sdcard chpasswd <<< "lkg:${LKG_USER_PASSWORD:-nano}"
+	chroot_sdcard chpasswd <<< "root:${LKG_ROOT_PASSWORD:-nano}"
+	rm -f "${SDCARD}/root/.not_logged_in_yet" "${SDCARD}/root/.no_rootfs_resize"
+	printf '33030144s\n' > "${SDCARD}/root/.rootfs_resize"
+	sed -i 's/--autologin root/--autologin lkg/' "${SDCARD}/etc/systemd/system/getty@.service.d/override.conf" "${SDCARD}/etc/systemd/system/serial-getty@.service.d/override.conf"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-sway-setup" "${SDCARD}/usr/local/sbin/lkg-sway-setup"
+	chroot_sdcard /usr/local/sbin/lkg-sway-setup
+	install -m 0755 "${SRC}/packages/blobs/lkg/lkg-menu" "${SDCARD}/home/lkg/bin/lkg-menu"
+	install -m 0755 "${SRC}/packages/blobs/lkg/lkg-player" "${SDCARD}/home/lkg/bin/lkg-player"
+	install -m 0755 "${SRC}/packages/blobs/lkg/lkg-mcu" "${SDCARD}/usr/local/bin/lkg-mcu"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-menu" "${SDCARD}/usr/local/bin/lkg-menu"
+	install -m 0755 "${SRC}/packages/blobs/lkg/dufs" "${SDCARD}/usr/local/bin/dufs"
+	install -d "${SDCARD}/usr/share/doc/dufs"
+	install -m 0644 "${SRC}/packages/blobs/lkg/dufs.LICENSE-MIT" "${SDCARD}/usr/share/doc/dufs/copyright"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-menu.service" "${SDCARD}/etc/systemd/system/lkg-menu.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-wifi-restore.service" "${SDCARD}/etc/systemd/system/lkg-wifi-restore.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-mcu.service" "${SDCARD}/etc/systemd/system/lkg-mcu.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-shutdown-prepare.service" "${SDCARD}/etc/systemd/system/lkg-shutdown-prepare.service"
+	install -d "${SDCARD}/etc/systemd/system/systemd-remount-fs.service.d" "${SDCARD}/usr/lib/systemd/system-shutdown"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-mcu-poweroff-shutdown" "${SDCARD}/usr/lib/systemd/system-shutdown/lkg-mcu-poweroff"
+	install -m 0644 "${SRC}/packages/bsp/lkg/home-lkg-data.mount" "${SDCARD}/etc/systemd/system/home-lkg-data.mount"
+	install -m 0644 "${SRC}/packages/bsp/lkg/systemd-remount-fs-overlay.conf" "${SDCARD}/etc/systemd/system/systemd-remount-fs.service.d/overlay.conf"
+	install -m 0644 "${SRC}/packages/bsp/lkg/dufs.service" "${SDCARD}/etc/systemd/system/dufs.service"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-firstboot-storage" "${SDCARD}/usr/local/sbin/lkg-firstboot-storage"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-usb-disk" "${SDCARD}/usr/local/sbin/lkg-usb-disk"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-usb-media" "${SDCARD}/usr/local/sbin/lkg-usb-media"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-wifi" "${SDCARD}/usr/local/sbin/lkg-wifi"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-wifi-restore" "${SDCARD}/usr/local/sbin/lkg-wifi-restore"
+	install -m 0644 "${SRC}/packages/bsp/lkg/wpa_supplicant-wlan0.conf" "${SDCARD}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf"
+	install -d "${SDCARD}/etc/systemd/system/wpa_supplicant@wlan0.service.d"
+	install -m 0644 "${SRC}/packages/bsp/lkg/wpa_supplicant-wlan0-condition.conf" "${SDCARD}/etc/systemd/system/wpa_supplicant@wlan0.service.d/lkg.conf"
+	install -m 0755 "${SRC}/packages/bsp/lkg/lkg-shutdown-prepare" "${SDCARD}/usr/local/sbin/lkg-shutdown-prepare"
+	install -m 0440 "${SRC}/packages/bsp/lkg/lkg-wifi.sudoers" "${SDCARD}/etc/sudoers.d/lkg-wifi"
+	install -m 0440 "${SRC}/packages/bsp/lkg/lkg-menu.sudoers" "${SDCARD}/etc/sudoers.d/lkg-menu"
+	install -m 0644 "${SRC}/packages/bsp/lkg/90-lkg-usb-media.rules" "${SDCARD}/etc/udev/rules.d/90-lkg-usb-media.rules"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-firstboot-storage.service" "${SDCARD}/etc/systemd/system/lkg-firstboot-storage.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-usb-disk.service" "${SDCARD}/etc/systemd/system/lkg-usb-disk.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-usb-media-rescan.service" "${SDCARD}/etc/systemd/system/lkg-usb-media-rescan.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-usb-media@.service" "${SDCARD}/etc/systemd/system/lkg-usb-media@.service"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-usb-mode-watch.service" "${SDCARD}/etc/systemd/system/lkg-usb-mode-watch.service"
+	install -d "${SDCARD}/etc/systemd/system/lkg-menu.service.d"
+	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-menu-storage.conf" "${SDCARD}/etc/systemd/system/lkg-menu.service.d/storage.conf"
+	printf 'overlayroot_cfgdisk="disabled"\noverlayroot=""\n' > "${SDCARD}/etc/overlayroot.conf"
+	install -d "${SDCARD}/etc/lkg" "${SDCARD}/etc/lkg/netplan-base" "${SDCARD}/var/lib/lkg"
+	cp -a "${SDCARD}/etc/netplan/." "${SDCARD}/etc/lkg/netplan-base/"
+	install -m 0644 "${SRC}/packages/blobs/lkg/visual.json" "${SDCARD}/etc/lkg/visual-template.json"
+	patch -d "${SDCARD}" -p1 < "${SRC}/packages/bsp/lkg/armbian-resize-config-partition.patch"
+	chroot_sdcard chown -R lkg:lkg /home/lkg
+	chroot_sdcard chown root:root /home/lkg/data
+	chroot_sdcard chmod 0755 /home/lkg/data
+	install -d "${SDCARD}/etc/polkit-1/rules.d"
+	install -m 0644 "${SRC}/packages/bsp/lkg/50-lkg-menu.rules" "${SDCARD}/etc/polkit-1/rules.d/50-lkg-menu.rules"
+	install -m 0755 "${SRC}/packages/bsp/lkg/50-lkg-default-password" "${SDCARD}/etc/update-motd.d/50-lkg-default-password"
+	printf '\nFONT="Uni2-DejaVuBold43x24.psf.gz"\n' >> "${SDCARD}/etc/default/console-setup"
+	chroot_sdcard systemctl unmask systemd-remount-fs.service
+	chroot_sdcard systemctl enable ssh avahi-daemon console-setup seatd lkg-mcu lkg-menu lkg-wifi-restore lkg-shutdown-prepare lkg-usb-mode-watch lkg-usb-media-rescan armbian-resize-filesystem lkg-firstboot-storage lkg-usb-disk home-lkg-data.mount wpa_supplicant@wlan0
+
+}
+
+function post_post_debootstrap_tweaks__lookingglass_go_motd() {
+	chmod 0755 "${SDCARD}/etc/update-motd.d/50-lkg-default-password"
+}
+
+function format_partitions__lookingglass_go_data_fstab() {
+	cat "${SRC}/packages/bsp/lkg/lkg-data.fstab" >> "${SDCARD}/etc/fstab"
+}

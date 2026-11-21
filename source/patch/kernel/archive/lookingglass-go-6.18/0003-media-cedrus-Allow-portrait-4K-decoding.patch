@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jinyu Meng <megabitsenmzq@gmail.com>
+Date: Tue, 17 Nov 2026 00:00:00 +0900
+Subject: [PATCH] media: cedrus: Allow portrait 4K decoding
+
+The 2304-pixel height limit rejects portrait video even when its frame
+size is within the 4K budget already accepted in landscape orientation.
+Buffer sizes and codec registers are derived from the negotiated width
+and height, so allow the same 4096-pixel maximum in both dimensions.
+---
+ drivers/staging/media/sunxi/cedrus/cedrus_video.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/staging/media/sunxi/cedrus/cedrus_video.c b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+index 111111111111..222222222222 100644
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -32,7 +32,7 @@
+ #define CEDRUS_MIN_WIDTH	16U
+ #define CEDRUS_MIN_HEIGHT	16U
+ #define CEDRUS_MAX_WIDTH	4096U
+-#define CEDRUS_MAX_HEIGHT	2304U
++#define CEDRUS_MAX_HEIGHT	4096U
+ 
+ static struct cedrus_format cedrus_formats[] = {
+ 	{
+-- 
+2.43.0

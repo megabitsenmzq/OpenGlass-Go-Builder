@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+timeout 5 systemctl stop netplan-wpa-wlan0.service wpa_supplicant.service 2>/dev/null || true
+exit 0

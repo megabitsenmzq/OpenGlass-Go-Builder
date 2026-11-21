@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch for LKG Go standalone mode restoration
+ConditionPathExists=/run/lkg-usb-disk-mode
+After=lkg-usb-disk.service lkg-usb-disk-test.service lkg-mcu.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/lkg-mcu watch
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jinyu Meng <megabitsenmzq@gmail.com>
+Date: Fri, 20 Nov 2026 14:00:00 +0900
+Subject: [PATCH 1/2] sunxi: add lookingglass_go_defconfig
+
+Add mainline U-Boot defconfig for Looking Glass Go (Allwinner H618,
+LPDDR4, AXP313A, SPI NOR flash), based on orangepi_zero3_defconfig
+without Ethernet PHY support.
+
+Signed-off-by: Jinyu Meng <megabitsenmzq@gmail.com>
+---
+ configs/lookingglass_go_defconfig | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+ create mode 100644 configs/lookingglass_go_defconfig
+
+diff --git a/configs/lookingglass_go_defconfig b/configs/lookingglass_go_defconfig
+new file mode 100644
+index 0000000000..c5b4f78d91
+--- /dev/null
++++ b/configs/lookingglass_go_defconfig
+@@ -0,0 +1,30 @@
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h618-orangepi-zero3"
++CONFIG_DRAM_CLK=792
++CONFIG_SPL=y
++CONFIG_DRAM_SUNXI_DX_ODT=0x07070707
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x0e0e
++CONFIG_DRAM_SUNXI_ODT_EN=0xaaaaeeee
++CONFIG_DRAM_SUNXI_TPR6=0x44000000
++CONFIG_DRAM_SUNXI_TPR10=0x402f6663
++CONFIG_DRAM_SUNXI_TPR11=0x24242624
++CONFIG_DRAM_SUNXI_TPR12=0x0f0f100f
++CONFIG_MACH_SUN50I_H616=y
++CONFIG_SUNXI_DRAM_H616_LPDDR4=y
++CONFIG_R_I2C_ENABLE=y
++CONFIG_SPL_SPI_SUNXI=y
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SPL_I2C=y
++CONFIG_SPL_SYS_I2C_LEGACY=y
++CONFIG_SYS_I2C_MVTWSI=y
++CONFIG_SYS_I2C_SLAVE=0x7f
++CONFIG_SYS_I2C_SPEED=400000
++CONFIG_MTD=y
++CONFIG_SPI_FLASH_ZBIT=y
++CONFIG_AXP313_POWER=y
++CONFIG_SPI=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++CONFIG_USB_MUSB_GADGET=y
+-- 
+2.43.0

@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jinyu Meng <megabitsenmzq@gmail.com>
+Date: Fri, 20 Nov 2026 14:00:00 +0900
+Subject: [PATCH 2/2] board: sunxi: initialize Looking Glass Go STM32 and orientation pins
+
+Configure PC11 (H618 active status to STM32), PC14 (STM32_RST input),
+PC15 (STM32_BOOT0 low), and PC8 (orientation jumper input with pull-up)
+in U-Boot board_init().
+
+Signed-off-by: Jinyu Meng <megabitsenmzq@gmail.com>
+---
+ board/sunxi/board.c | 46 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 2ca2840..b1c2d3e 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -228,6 +228,52 @@ int board_init(void)
+ 	if (ret)
+ 		return ret;
+ 
++#ifdef CONFIG_MACH_SUN50I_H616
++	__maybe_unused int status_pin, stm32rst_pin, stm32boot0_pin, orientation_pin;
++
++	/*
++	 * Drive pin low to signal to STM32 that H616 is active.
++	 */
++	status_pin = sunxi_name_to_gpio("PC11");
++	if (status_pin >= 0) {
++		gpio_request(status_pin, "status");
++		gpio_direction_output(status_pin, 0);
++	}
++
++	/*
++	 * STM32_RST set high impedance input to allow STM32
++	 * to control its own reset.
++	 */
++	stm32rst_pin = sunxi_name_to_gpio("PC14");
++	if (stm32rst_pin >= 0) {
++		gpio_request(stm32rst_pin, "stm32rst");
++		gpio_direction_input(stm32rst_pin);
++	}
++
++	/*
++	 * STM32_BOOT0 set output low to disable bootloader activation on reset.
++	 */
++	stm32boot0_pin = sunxi_name_to_gpio("PC15");
++	if (stm32boot0_pin >= 0) {
++		gpio_request(stm32boot0_pin, "stm32boot0");
++		gpio_direction_output(stm32boot0_pin, 0);
++	}
++
++	/*
++	 * Solder jumper to indicate portrait or landscape orientation
++	 * Internal pull-up
++	 * High = Portrait Orientation
++	 * Low = Landscape Orientation
++	 */
++	orientation_pin = sunxi_name_to_gpio("PC8");
++	if (orientation_pin >= 0) {
++		gpio_request(orientation_pin, "orientation");
++		gpio_direction_input(orientation_pin);
++		sunxi_gpio_set_pull(SUNXI_GPC(8), SUNXI_GPIO_PULL_UP);
++		sunxi_gpio_set_drv(SUNXI_GPC(8), 2);
++	}
++#endif
++
+ 	eth_init_board();
+ 
+ 	return 0;
+-- 
+2.43.0

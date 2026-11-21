@@ -1,0 +1,12 @@
+.DS_Store
+._*
+dist/
+dist.new*/
+images/
+config/wifi.conf
+source/.local-sources/
+source/packages/blobs/lkg/lkg-menu
+source/packages/blobs/lkg/lkg-player
+source/packages/blobs/lkg/lkg-mcu
+source/packages/blobs/lkg/app-build-packages.txt
+*.o

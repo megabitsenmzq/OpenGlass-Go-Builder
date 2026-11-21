@@ -1,0 +1,12 @@
+[Unit]
+Description=Mount persistent LKG Go Netplan configuration
+Requires=lkg-firstboot-storage.service
+After=lkg-firstboot-storage.service
+Before=lkg-menu.service wpa_supplicant@wlan0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lkg-wifi-restore
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+wifi: rtw88: sdio: Restore RX request masking for Looking Glass Go
+
+The RTL8723DS on Looking Glass Go loses beacons and repeatedly
+reassociates when RX_REQUEST is cleared by the Armbian interrupt-storm
+fix. Keep the Linux 6.6 behavior for this board until the interrupt fix
+covers this chipset correctly.
+
+diff --git a/drivers/net/wireless/realtek/rtw88/sdio.c b/drivers/net/wireless/realtek/rtw88/sdio.c
+--- a/drivers/net/wireless/realtek/rtw88/sdio.c
++++ b/drivers/net/wireless/realtek/rtw88/sdio.c
+@@ -1085,6 +1085,7 @@ static void rtw_sdio_handle_interrupt(struct sdio_func *sdio_func)
+ 	if (hisr & REG_SDIO_HISR_TXERR)
+ 		rtw_sdio_tx_err_isr(rtwdev);
+ 	if (hisr & REG_SDIO_HISR_RX_REQUEST) {
++		hisr &= ~REG_SDIO_HISR_RX_REQUEST;
+ 		rtw_sdio_rx_isr(rtwdev);
+ 	}
+ 

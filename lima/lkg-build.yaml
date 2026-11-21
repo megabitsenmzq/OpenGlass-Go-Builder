@@ -1,0 +1,15 @@
+minimumLimaVersion: 2.0.0
+images:
+- location: "https://cloud-images.ubuntu.com/releases/resolute/release-20261016/ubuntu-26.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+  digest: "sha256:8eb876c2ccc4b6ff89e4a65d511815923b285e04503ba465809bf587f763da24"
+  variant: "server"
+cpus: 8
+memory: 8GiB
+disk: 80GiB
+containerd:
+  system: false
+  user: false
+mounts: []
+param:
+  internal_netplanOptional: "true"

@@ -1,0 +1,12 @@
+[Unit]
+Description=LKG Go first-boot storage initialization
+ConditionPathExists=/dev/mmcblk0
+After=armbian-resize-filesystem.service
+Before=lkg-usb-disk.service lkg-menu.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lkg-firstboot-storage
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,81 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+DISK=/dev/mmcblk0
+ROOT_PART=/dev/mmcblk0p1
+CONFIG_PART=/dev/mmcblk0p2
+DATA_PART=/dev/mmcblk0p3
+CONFIG_MARKER=/var/lib/lkg/config-initialized
+DATA_MOUNT=/home/lkg/data
+DATA_MARKER=/home/lkg/data/.lkg-storage-initialized
+MIN_ROOT_BYTES=16890454016
+
+root_size=$(lsblk -bn -d -o SIZE "$ROOT_PART")
+if [ "$root_size" -lt "$MIN_ROOT_BYTES" ]; then
+    logger -t lkg-firstboot-storage "Root partition is still smaller than the expected size; waiting for a successful Armbian resize"
+    exit 1
+fi
+
+if [ ! -b "$CONFIG_PART" ] || [ ! -b "$DATA_PART" ]; then
+    logger -t lkg-firstboot-storage "Config or data partition is missing after Armbian resize"
+    exit 1
+fi
+
+partition_type=$(sfdisk --part-type "$DISK" 3 | tr -d '[:space:]')
+case "$partition_type" in
+    7|07|0x07) ;;
+    *)
+        sfdisk --force --no-reread --part-type "$DISK" 3 0x07
+        partprobe "$DISK" || true
+        udevadm settle
+        ;;
+esac
+
+if [ ! -f "$CONFIG_MARKER" ]; then
+    mkfs.ext4 -F -L LKG_CONFIG "$CONFIG_PART"
+else
+    config_label=$(blkid -s LABEL -o value "$CONFIG_PART" 2>/dev/null || true)
+    config_fstype=$(blkid -s TYPE -o value "$CONFIG_PART" 2>/dev/null || true)
+    if [ "$config_label" != "LKG_CONFIG" ] || [ "$config_fstype" != "ext4" ]; then
+        logger -t lkg-firstboot-storage "Persistent config partition is invalid: label=$config_label type=$config_fstype"
+        exit 1
+    fi
+fi
+
+data_label=$(blkid -s LABEL -o value "$DATA_PART" 2>/dev/null || true)
+data_fstype=$(blkid -s TYPE -o value "$DATA_PART" 2>/dev/null || true)
+if [ "$data_label" != "LKG_DATA" ] || [ "$data_fstype" != "exfat" ]; then
+    if [ -n "$data_label" ] || [ -n "$data_fstype" ]; then
+        logger -t lkg-firstboot-storage "Refusing to format non-empty or unrecognized p3: label=$data_label type=$data_fstype"
+        exit 1
+    fi
+    mkfs.exfat -L LKG_DATA "$DATA_PART"
+fi
+
+install -d -o root -g root -m 0755 /var/lib/lkg
+touch "$CONFIG_MARKER"
+if ! mountpoint -q "$DATA_MOUNT"; then
+    install -d -o root -g root -m 0755 "$DATA_MOUNT"
+    mount "$DATA_MOUNT"
+fi
+mkdir -p "$DATA_MOUNT/media" "$DATA_MOUNT/cache/thumbnails"
+
+cat > /etc/overlayroot.conf <<'EOF'
+overlayroot_cfgdisk="disabled"
+overlayroot="tmpfs:recurse=0"
+EOF
+rm -f /etc/update-motd.d/97-overlayroot
+
+if [ -f "$DATA_MARKER" ]; then
+    exit 0
+fi
+
+touch "$DATA_MARKER"
+sync
+umount "$DATA_MOUNT"
+fsck.exfat -n "$DATA_PART"
+
+touch /run/lkg-reboot-pending
+logger -t lkg-firstboot-storage "Storage initialized; rebooting with read-only overlay root"
+systemctl reboot --no-block

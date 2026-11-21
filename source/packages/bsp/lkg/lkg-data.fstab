@@ -1,0 +1,1 @@
+LABEL=LKG_DATA /home/lkg/data exfat noauto,uid=1000,gid=1000,fmask=0133,dmask=0022,iocharset=utf8,errors=remount-ro 0 0
