@@ -75,6 +75,8 @@ mkdir -p "$OUTPUT_DIR"
     "$OUTPUT_DIR/lkg-menu.sudoers"
 "${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-mcu-poweroff-shutdown" \
     "$OUTPUT_DIR/lkg-mcu-poweroff-shutdown"
+"${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-wifi" \
+    "$OUTPUT_DIR/lkg-wifi"
 "${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-wifi-restore" \
     "$OUTPUT_DIR/lkg-wifi-restore"
 "${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-usb-media" \

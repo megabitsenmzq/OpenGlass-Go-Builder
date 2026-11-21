@@ -7,7 +7,6 @@ CONFIG_MOUNT=/var/lib/lkg/config
 PERSIST=$CONFIG_MOUNT/netplan
 TARGET=/etc/netplan
 SAVED=$TARGET/30-lkg-wifi.yaml
-WPA_CONFIG=/run/netplan/wpa-wlan0.conf
 
 install -d "$CONFIG_MOUNT" "$TARGET"
 mountpoint -q "$CONFIG_MOUNT" || mount LABEL=LKG_CONFIG "$CONFIG_MOUNT"
@@ -19,7 +18,6 @@ netplan generate
 systemctl reload-or-restart systemd-networkd.service
 if [ -f "$SAVED" ]; then
     systemctl stop wpa_supplicant@wlan0.service
-    sed -i '/^ctrl_interface=/d' "$WPA_CONFIG"
-    printf '%s\n' 'ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev' >> "$WPA_CONFIG"
+    /usr/local/sbin/lkg-wifi prepare-wpa
     systemctl start netplan-wpa-wlan0.service
 fi

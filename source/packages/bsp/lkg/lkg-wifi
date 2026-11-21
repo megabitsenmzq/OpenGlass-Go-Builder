@@ -13,6 +13,9 @@ import yaml
 INTERFACE = "wlan0"
 CONFIG_PATH = "/etc/netplan/30-lkg-wifi.yaml"
 CONTROL_PATH = "/run/wpa_supplicant/wlan0"
+WPA_CONFIG_PATH = "/run/netplan/wpa-wlan0.conf"
+MAX_SAVED_NETWORKS = 32
+CTRL_INTERFACE_LINE = "ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev"
 
 
 def wpa(*arguments):
@@ -105,17 +108,68 @@ def status_fields(control=None):
     return fields
 
 
+def parse_config_bytes(raw):
+    if not raw:
+        return {}
+    try:
+        text = raw.decode("utf-8")
+        data = yaml.safe_load(text)
+    except (UnicodeDecodeError, yaml.YAMLError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def read_config():
     try:
-        with open(CONFIG_PATH, "r") as source:
-            return yaml.safe_load(source) or {}
+        with open(CONFIG_PATH, "rb") as source:
+            return parse_config_bytes(source.read())
     except FileNotFoundError:
         return {}
 
 
 def access_points(config):
-    return ((config.get("network", {}).get("wifis", {})
-             .get(INTERFACE, {}).get("access-points", {})) or {})
+    if not isinstance(config, dict):
+        return {}
+    network = config.get("network")
+    if not isinstance(network, dict):
+        return {}
+    wifis = network.get("wifis")
+    if not isinstance(wifis, dict):
+        return {}
+    interface = wifis.get(INTERFACE)
+    if not isinstance(interface, dict):
+        return {}
+    raw_access_points = interface.get("access-points")
+    if not isinstance(raw_access_points, dict):
+        return {}
+    result = {}
+    for ssid, entry in raw_access_points.items():
+        result[str(ssid)] = dict(entry) if isinstance(entry, dict) else {}
+    return result
+
+
+def merge_saved_network(saved, ssid, password):
+    merged = dict(saved)
+    merged.pop(ssid, None)
+    merged[ssid] = {"password": password} if password else {}
+    while len(merged) > MAX_SAVED_NETWORKS:
+        oldest = next(iter(merged))
+        del merged[oldest]
+    return merged
+
+
+def build_config(saved):
+    return {
+        "network": {
+            "version": 2,
+            "wifis": {
+                INTERFACE: {
+                    "dhcp4": True,
+                    "access-points": dict(saved),
+                }
+            },
+        }
+    }
 
 
 def quote_passphrase(password):
@@ -124,14 +178,14 @@ def quote_passphrase(password):
     return f'"{password}"'
 
 
-def write_config(path, data):
-    directory = os.path.dirname(path)
+def write_bytes_atomic(path, data, mode=0o600):
+    directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=".lkg-wifi-", dir=directory, text=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".lkg-wifi-", dir=directory, text=False)
     try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w") as output:
-            yaml.safe_dump(data, output, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(data)
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, path)
@@ -143,43 +197,136 @@ def write_config(path, data):
         raise
 
 
-def allow_menu_control():
-    path = "/run/netplan/wpa-wlan0.conf"
+def write_text_atomic(path, text, mode=0o600):
+    write_bytes_atomic(path, text.encode("utf-8"), mode=mode)
+
+
+def write_config(path, data):
+    dumped = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    write_text_atomic(path, dumped, mode=0o600)
+
+
+def decode_wpa_ssid(value):
+    escapes = {
+        "\\": b"\\",
+        '"': b'"',
+        "n": b"\n",
+        "r": b"\r",
+        "t": b"\t",
+        "e": b"\x1b",
+    }
+    result = bytearray()
+    index = 0
+    while index < len(value):
+        if value[index] == "\\" and index + 1 < len(value):
+            if value[index + 1] == "x" and index + 4 <= len(value):
+                try:
+                    result.append(int(value[index + 2:index + 4], 16))
+                    index += 4
+                    continue
+                except ValueError:
+                    pass
+            next_char = value[index + 1]
+            if next_char in escapes:
+                result.extend(escapes[next_char])
+            else:
+                result.extend(next_char.encode("utf-8"))
+            index += 2
+            continue
+        result.extend(value[index].encode("utf-8"))
+        index += 1
+    return bytes(result)
+
+
+def decode_wpa_conf_ssid(raw_value, known_ssids):
+    raw = raw_value.strip()
+    if raw.startswith('P"') and raw.endswith('"') and len(raw) >= 3:
+        inner = raw[2:-1]
+        try:
+            return decode_wpa_ssid(inner).decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2:
+        inner = raw[1:-1]
+        if inner in known_ssids:
+            return inner
+        try:
+            decoded = decode_wpa_ssid(inner).decode("utf-8")
+            if decoded in known_ssids:
+                return decoded
+        except UnicodeDecodeError:
+            pass
+        return inner
+    if len(raw) >= 2 and len(raw) % 2 == 0 and all(c in "0123456789abcdefABCDEF" for c in raw):
+        try:
+            return bytes.fromhex(raw).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return None
+    return None
+
+
+def patch_wpa_config(config=None, path=WPA_CONFIG_PATH):
     try:
-        with open(path, "r") as source:
-            lines = [line for line in source if not line.startswith("ctrl_interface=")]
+        with open(path, "r", encoding="utf-8", errors="replace") as source:
+            lines = source.readlines()
     except FileNotFoundError:
         return
-    lines.append("ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev\n")
-    write_config(path, "".join(lines))
+    if config is None:
+        config = read_config()
+    priorities = {
+        ssid: index + 1
+        for index, ssid in enumerate(access_points(config))
+    }
+    output = [f"{CTRL_INTERFACE_LINE}\n"]
+    in_network = False
+    block_lines = []
+    block_ssid = None
+    for line in lines:
+        stripped = line.strip()
+        if not in_network:
+            if stripped.startswith("ctrl_interface="):
+                continue
+            if stripped.replace(" ", "").replace("\t", "") == "network={":
+                in_network = True
+                block_lines = [line]
+                block_ssid = None
+                continue
+            output.append(line)
+        else:
+            if stripped == "}":
+                if block_ssid in priorities:
+                    block_lines.append(f"  priority={priorities[block_ssid]}\n")
+                block_lines.append(line)
+                output.extend(block_lines)
+                in_network = False
+                block_lines = []
+                block_ssid = None
+                continue
+            if stripped.startswith("priority="):
+                continue
+            if stripped.startswith("ssid="):
+                block_ssid = decode_wpa_conf_ssid(stripped[5:], priorities)
+            block_lines.append(line)
+    if in_network:
+        output.extend(block_lines)
+    write_text_atomic(path, "".join(output), mode=0o600)
 
 
-def generate_config():
+def generate_config(config=None):
     subprocess.run(["/usr/sbin/netplan", "generate"], check=True,
                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
-    allow_menu_control()
+    patch_wpa_config(config=config)
     subprocess.run(["/usr/bin/systemctl", "reload-or-restart", "systemd-networkd.service"],
                    check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
 
 
 def persist_network(ssid, password, previous_config):
-    access_point = {}
-    if password:
-        access_point["password"] = password
-    config = {
-        "network": {
-            "version": 2,
-            "wifis": {
-                INTERFACE: {
-                    "dhcp4": True,
-                    "access-points": {ssid: access_point},
-                }
-            },
-        }
-    }
+    existing = parse_config_bytes(previous_config)
+    saved = merge_saved_network(access_points(existing), ssid, password)
+    config = build_config(saved)
     try:
         write_config(CONFIG_PATH, config)
-        generate_config()
+        generate_config(config)
     except BaseException:
         if previous_config is None:
             try:
@@ -187,11 +334,13 @@ def persist_network(ssid, password, previous_config):
             except FileNotFoundError:
                 pass
         else:
-            with open(CONFIG_PATH, "wb") as output:
-                output.write(previous_config)
+            write_bytes_atomic(CONFIG_PATH, previous_config, mode=0o600)
         subprocess.run(["/usr/sbin/netplan", "generate"], check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
-        allow_menu_control()
+        try:
+            patch_wpa_config()
+        except BaseException:
+            pass
         subprocess.run(["/usr/bin/systemctl", "reload-or-restart", "systemd-networkd.service"],
                        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
         raise
@@ -247,11 +396,15 @@ def connect(ssid, password):
         wait_until_connected(control, network_id)
         persist_network(ssid, password, previous_config)
         configured = control.command("list_networks")
+        expected_ssid = ssid.encode("utf-8")
         for line in configured.splitlines()[1:]:
             fields = line.split("\t")
             if fields and fields[0].isdigit() and fields[0] != network_id:
                 try:
-                    control.command("disable_network", fields[0])
+                    if len(fields) >= 2 and decode_wpa_ssid(fields[1]) == expected_ssid:
+                        control.command("remove_network", fields[0])
+                    else:
+                        control.command("disable_network", fields[0])
                 except RuntimeError:
                     pass
         print("Connected and saved")
@@ -274,10 +427,11 @@ def connect(ssid, password):
 
 
 def connect_saved(ssid):
-    access_point = access_points(read_config()).get(ssid)
-    if access_point is None:
+    saved = access_points(read_config())
+    if ssid not in saved:
         raise RuntimeError("Network is no longer saved")
-    connect(ssid, (access_point or {}).get("password", ""))
+    password = (saved[ssid] or {}).get("password")
+    connect(ssid, "" if password is None else str(password))
 
 
 def disconnect():
@@ -290,37 +444,43 @@ def disconnect():
     raise RuntimeError("Disconnect timed out")
 
 
-def decode_wpa_ssid(value):
-    result = bytearray()
-    index = 0
-    while index < len(value):
-        if value[index:index + 2] == "\\x" and index + 4 <= len(value):
-            try:
-                result.append(int(value[index + 2:index + 4], 16))
-                index += 4
-                continue
-            except ValueError:
-                pass
-        result.extend(value[index].encode("utf-8"))
-        index += 1
-    return bytes(result)
-
-
 def forget(ssid):
-    config = read_config()
+    try:
+        with open(CONFIG_PATH, "rb") as source:
+            previous_config = source.read()
+    except FileNotFoundError:
+        previous_config = None
+    config = parse_config_bytes(previous_config)
     saved = access_points(config)
     if ssid in saved:
         del saved[ssid]
         try:
             if saved:
-                write_config(CONFIG_PATH, config)
+                updated = build_config(saved)
+                write_config(CONFIG_PATH, updated)
+                generate_config(updated)
             else:
                 try:
                     os.unlink(CONFIG_PATH)
                 except FileNotFoundError:
                     pass
-            generate_config()
+                generate_config({})
         except BaseException:
+            if previous_config is None:
+                try:
+                    os.unlink(CONFIG_PATH)
+                except FileNotFoundError:
+                    pass
+            else:
+                write_bytes_atomic(CONFIG_PATH, previous_config, mode=0o600)
+            subprocess.run(["/usr/sbin/netplan", "generate"], check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+            try:
+                patch_wpa_config()
+            except BaseException:
+                pass
+            subprocess.run(["/usr/bin/systemctl", "reload-or-restart", "systemd-networkd.service"],
+                           check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
             raise RuntimeError("Unable to update the saved network configuration")
 
     expected = ssid.encode("utf-8")
@@ -335,7 +495,7 @@ def forget(ssid):
 def main():
     if len(sys.argv) < 2:
         print("Usage: lkg-wifi list | connect SSID_HEX | connect-saved SSID_HEX | "
-              "disconnect | forget SSID_HEX", file=sys.stderr)
+              "disconnect | forget SSID_HEX | prepare-wpa", file=sys.stderr)
         return 2
     action = sys.argv[1]
     try:
@@ -345,6 +505,9 @@ def main():
             return 0
         if action == "disconnect" and len(sys.argv) == 2:
             disconnect()
+            return 0
+        if action == "prepare-wpa" and len(sys.argv) == 2:
+            patch_wpa_config()
             return 0
         if action not in ("connect", "connect-saved", "forget") or len(sys.argv) != 3:
             raise ValueError("Invalid arguments")

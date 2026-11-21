@@ -32,6 +32,7 @@ trap cleanup EXIT
 "${SUDO[@]}" install -o 1000 -g 1000 -m755 "$BLOBS/lkg-player" "$MOUNT/home/lkg/bin/lkg-player"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-mcu" "$MOUNT/usr/local/bin/lkg-mcu"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-shutdown-prepare" "$MOUNT/usr/local/sbin/lkg-shutdown-prepare"
+"${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-wifi" "$MOUNT/usr/local/sbin/lkg-wifi"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-wifi-restore" "$MOUNT/usr/local/sbin/lkg-wifi-restore"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-usb-media" "$MOUNT/usr/local/sbin/lkg-usb-media"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-sway-setup" "$MOUNT/usr/local/sbin/lkg-sway-setup"

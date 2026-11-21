@@ -45,11 +45,19 @@ test ! -e "$MOUNT/etc/systemd/system/home-lkg-data.mount.d/firstboot.conf"
 test -L "$MOUNT/etc/systemd/system/multi-user.target.wants/home-lkg-data.mount"
 "${SUDO[@]}" grep -q 'reload-or-restart systemd-networkd.service' \
     "$MOUNT/usr/local/sbin/lkg-wifi-restore"
-"${SUDO[@]}" grep -q 'ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev' \
+"${SUDO[@]}" grep -q '/usr/local/sbin/lkg-wifi prepare-wpa' \
     "$MOUNT/usr/local/sbin/lkg-wifi-restore"
 "${SUDO[@]}" grep -q 'systemctl stop wpa_supplicant@wlan0.service' \
     "$MOUNT/usr/local/sbin/lkg-wifi-restore"
+"${SUDO[@]}" grep -q 'ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev' \
+    "$MOUNT/usr/local/sbin/lkg-wifi"
+"${SUDO[@]}" grep -q 'priority=' \
+    "$MOUNT/usr/local/sbin/lkg-wifi"
 "${SUDO[@]}" grep -q 'reload-or-restart.*systemd-networkd.service' \
+    "$MOUNT/usr/local/sbin/lkg-wifi"
+"${SUDO[@]}" cmp "$BLOBS/lkg-wifi" "$MOUNT/usr/local/sbin/lkg-wifi"
+"${SUDO[@]}" cmp "$BLOBS/lkg-wifi-restore" "$MOUNT/usr/local/sbin/lkg-wifi-restore"
+"${SUDO[@]}" python3 -B -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' \
     "$MOUNT/usr/local/sbin/lkg-wifi"
 "${SUDO[@]}" grep -qx 'CONFIG_PART=/dev/mmcblk0p2' "$MOUNT/usr/local/sbin/lkg-firstboot-storage"
 "${SUDO[@]}" grep -qx 'CONFIG_MARKER=/var/lib/lkg/config-initialized' "$MOUNT/usr/local/sbin/lkg-firstboot-storage"
