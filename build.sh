@@ -58,7 +58,7 @@ done
     echo "--clean cannot be combined with --apps-only" >&2
     exit 2
 }
-if [ -f "$PROJECT_ROOT/.gitmodules" ] && [ -e "$PROJECT_ROOT/.git" ]; then
+if [ -f "$PROJECT_ROOT/.gitmodules" ] && [ -e "$PROJECT_ROOT/.git" ] && [ ! -e "$PROJECT_ROOT/apps/.git" ]; then
     git -C "$PROJECT_ROOT" submodule update --init --recursive apps
 fi
 

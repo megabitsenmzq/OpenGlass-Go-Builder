@@ -59,7 +59,7 @@ if ! mountpoint -q "$DATA_MOUNT"; then
     install -d -o root -g root -m 0755 "$DATA_MOUNT"
     mount "$DATA_MOUNT"
 fi
-mkdir -p "$DATA_MOUNT/media" "$DATA_MOUNT/cache/thumbnails"
+mkdir -p "$DATA_MOUNT/media" "$DATA_MOUNT/apps" "$DATA_MOUNT/cache/thumbnails"
 
 cat > /etc/overlayroot.conf <<'EOF'
 overlayroot_cfgdisk="disabled"

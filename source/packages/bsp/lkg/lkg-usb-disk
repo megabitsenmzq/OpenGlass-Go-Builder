@@ -30,7 +30,9 @@ desktop() {
         logger -t lkg-usb-disk "No USB disk service found"
         return 1
     fi
-    exec /usr/bin/systemctl start "$unit" lkg-usb-mode-watch.service
+    /usr/bin/systemctl restart "$unit" || return 1
+    : > "$MARKER"
+    exec /usr/bin/systemctl restart lkg-usb-mode-watch.service
 }
 
 start() {

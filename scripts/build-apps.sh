@@ -83,6 +83,8 @@ mkdir -p "$OUTPUT_DIR"
     "$OUTPUT_DIR/lkg-usb-media"
 "${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-sway-setup" \
     "$OUTPUT_DIR/lkg-sway-setup"
+"${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-usb-disk" \
+    "$OUTPUT_DIR/lkg-usb-disk"
 
 "${SUDO[@]}" chroot "$CHROOT_DIR" /root/lkg-app-src/lkg-menu/lkg-menu --help >/dev/null
 "${SUDO[@]}" chroot "$CHROOT_DIR" /root/lkg-app-src/lkg-player/lkg-player --help >/dev/null

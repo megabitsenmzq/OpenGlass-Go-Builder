@@ -36,6 +36,7 @@ trap cleanup EXIT
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-wifi-restore" "$MOUNT/usr/local/sbin/lkg-wifi-restore"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-usb-media" "$MOUNT/usr/local/sbin/lkg-usb-media"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-sway-setup" "$MOUNT/usr/local/sbin/lkg-sway-setup"
+"${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-usb-disk" "$MOUNT/usr/local/sbin/lkg-usb-disk"
 "${SUDO[@]}" rm -f "$MOUNT/usr/local/bin/lkg-mcu-poweroff" \
     "$MOUNT/usr/local/sbin/lkg-usb-mode-watch" \
     "$MOUNT/usr/local/sbin/lkg-usb-desktop"
