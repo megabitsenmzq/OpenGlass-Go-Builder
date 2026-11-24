@@ -7,6 +7,7 @@ ROOT_PART=/dev/mmcblk0p1
 CONFIG_PART=/dev/mmcblk0p2
 DATA_PART=/dev/mmcblk0p3
 CONFIG_MARKER=/var/lib/lkg/config-initialized
+OVERLAY_MARKER=/var/lib/lkg/overlayroot-initialized
 DATA_MOUNT=/home/lkg/data
 DATA_MARKER=/home/lkg/data/.lkg-storage-initialized
 MIN_ROOT_BYTES=16890454016
@@ -61,8 +62,7 @@ if ! mountpoint -q "$DATA_MOUNT"; then
 fi
 mkdir -p "$DATA_MOUNT/media" "$DATA_MOUNT/apps" "$DATA_MOUNT/cache/thumbnails"
 
-if [ -f "$DATA_MARKER" ] &&
-   grep -qx 'overlayroot="tmpfs:recurse=0"' /etc/overlayroot.conf 2>/dev/null; then
+if [ -f "$DATA_MARKER" ] && [ -f "$OVERLAY_MARKER" ]; then
     exit 0
 fi
 
@@ -72,7 +72,7 @@ overlayroot="tmpfs:recurse=0"
 EOF
 rm -f /etc/update-motd.d/97-overlayroot
 
-touch "$DATA_MARKER"
+touch "$OVERLAY_MARKER" "$DATA_MARKER"
 sync
 umount "$DATA_MOUNT"
 fsck.exfat -n "$DATA_PART"

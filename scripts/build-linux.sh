@@ -148,6 +148,7 @@ if [ "$APPS_ONLY" -eq 0 ]; then
 LKG_KERNEL_COMMIT="$KERNEL_COMMIT"
 LKG_ATF_TAG="$ATF_TAG"
 LKG_UBOOT_TAG="$UBOOT_TAG"
+LKG_IMAGE_VERSION="$IMAGE_VERSION"
 EOF
     cd "$ARMBIAN_DIR"
     ./compile.sh build \
@@ -174,7 +175,7 @@ IMAGE_NAME="$IMAGE_BASENAME.img"
 if [ "$APPS_ONLY" -eq 1 ]; then
     cp "$ARMBIAN_IMAGE" "$DIST_DIR/$IMAGE_NAME"
     bash "$PROJECT_ROOT/scripts/update-image-apps.sh" "$DIST_DIR/$IMAGE_NAME" \
-        "$ARMBIAN_DIR/packages/blobs/lkg"
+        "$ARMBIAN_DIR/packages/blobs/lkg" "$IMAGE_VERSION"
 else
     cp "$ARMBIAN_IMAGE" "$DIST_DIR/$IMAGE_NAME"
 fi
@@ -182,7 +183,7 @@ fi
 cp "$ARMBIAN_DIR/packages/blobs/lkg/app-build-packages.txt" "$DIST_DIR/"
 
 bash "$PROJECT_ROOT/scripts/verify-image.sh" "$DIST_DIR/$IMAGE_NAME" \
-    "$ARMBIAN_DIR/packages/blobs/lkg"
+    "$ARMBIAN_DIR/packages/blobs/lkg" "$IMAGE_VERSION"
 
 (
     cd "$PROJECT_ROOT"
@@ -204,6 +205,7 @@ fi
     cd "$DIST_DIR"
     sha256sum "$IMAGE_NAME" > "$IMAGE_NAME.sha256"
     {
+        printf 'Image version: %s\n' "$IMAGE_VERSION"
         printf 'Built UTC: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf 'Build mode: %s\n' "$BUILD_MODE"
         if [ -n "$REPO_COMMIT" ]; then

@@ -125,10 +125,21 @@ function post_family_tweaks__lookingglass_go_userspace() {
 	install -d "${SDCARD}/etc/systemd/system/lkg-menu.service.d"
 	install -m 0644 "${SRC}/packages/bsp/lkg/lkg-menu-storage.conf" "${SDCARD}/etc/systemd/system/lkg-menu.service.d/storage.conf"
 	printf 'overlayroot_cfgdisk="disabled"\noverlayroot=""\n' > "${SDCARD}/etc/overlayroot.conf"
+	local image_version="${LKG_IMAGE_VERSION:-}"
+	if [[ -z "${image_version}" && -f "${USERPATCHES_PATH}/lookingglass-go-versions.conf" ]]; then
+		source "${USERPATCHES_PATH}/lookingglass-go-versions.conf"
+		image_version="${LKG_IMAGE_VERSION:-}"
+	fi
+	: "${image_version:?Provide userpatches/lookingglass-go-versions.conf with LKG_IMAGE_VERSION}"
+	printf 'NAME="OpenGlass Go"\nVERSION="%s"\nPRETTY_NAME="OpenGlass Go %s"\n' \
+		"${image_version}" "${image_version}" > "${SDCARD}/etc/openglass-release"
+	chmod 0644 "${SDCARD}/etc/openglass-release"
 	install -d "${SDCARD}/etc/lkg" "${SDCARD}/etc/lkg/netplan-base" "${SDCARD}/var/lib/lkg"
 	cp -a "${SDCARD}/etc/netplan/." "${SDCARD}/etc/lkg/netplan-base/"
 	install -m 0644 "${SRC}/packages/blobs/lkg/visual.json" "${SDCARD}/etc/lkg/visual-template.json"
 	patch -d "${SDCARD}" -p1 < "${SRC}/packages/bsp/lkg/armbian-resize-config-partition.patch"
+	chroot_sdcard install -d -o lkg -g lkg /home/lkg/.cache /home/lkg/.cache/gstreamer-1.0
+	chroot_sdcard env HOME=/home/lkg XDG_CACHE_HOME=/home/lkg/.cache /usr/bin/gst-inspect-1.0 pipewiresink >/dev/null
 	chroot_sdcard chown -R lkg:lkg /home/lkg
 	chroot_sdcard chown root:root /home/lkg/data
 	chroot_sdcard chmod 0755 /home/lkg/data

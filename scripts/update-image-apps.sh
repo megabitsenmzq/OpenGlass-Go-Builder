@@ -4,8 +4,15 @@ set -euo pipefail
 
 IMAGE=$1
 BLOBS=$2
+VERSION_LOCK="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../versions.lock"
+if [ -f "$VERSION_LOCK" ]; then
+    # shellcheck source=../versions.lock
+    source "$VERSION_LOCK"
+fi
+IMAGE_VERSION=${3:-${IMAGE_VERSION:-}}
 [ -f "$IMAGE" ] || { echo "Image not found: $IMAGE" >&2; exit 1; }
 [ -d "$BLOBS" ] || { echo "Application blob directory not found: $BLOBS" >&2; exit 1; }
+[ -n "$IMAGE_VERSION" ] || { echo "Image version not specified" >&2; exit 1; }
 
 if [ "$(id -u)" -eq 0 ]; then
     SUDO=()
@@ -27,6 +34,11 @@ cleanup() {
     "${SUDO[@]}" losetup -d "$LOOP" 2>/dev/null || true
 }
 trap cleanup EXIT
+"${SUDO[@]}" udevadm settle 2>/dev/null || true
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -b "${LOOP}p1" ] && break
+    sleep 0.2
+done
 "${SUDO[@]}" mount "${LOOP}p1" "$MOUNT"
 "${SUDO[@]}" install -o 1000 -g 1000 -m755 "$BLOBS/lkg-menu" "$MOUNT/home/lkg/bin/lkg-menu"
 "${SUDO[@]}" install -o 1000 -g 1000 -m755 "$BLOBS/lkg-player" "$MOUNT/home/lkg/bin/lkg-player"
@@ -126,5 +138,12 @@ if [ "${#MISSING_PACKAGES[@]}" -gt 0 ]; then
 fi
 "${SUDO[@]}" chroot "$MOUNT" /usr/local/sbin/lkg-sway-setup
 "${SUDO[@]}" chroot "$MOUNT" usermod --append --groups audio lkg
+"${SUDO[@]}" install -d -o 1000 -g 1000 "$MOUNT/home/lkg/.cache" "$MOUNT/home/lkg/.cache/gstreamer-1.0"
+"${SUDO[@]}" chroot "$MOUNT" env HOME=/home/lkg XDG_CACHE_HOME=/home/lkg/.cache /usr/bin/gst-inspect-1.0 pipewiresink >/dev/null
+"${SUDO[@]}" chown -R 1000:1000 "$MOUNT/home/lkg/.cache"
+printf 'NAME="OpenGlass Go"\nVERSION="%s"\nPRETTY_NAME="OpenGlass Go %s"\n' \
+    "$IMAGE_VERSION" "$IMAGE_VERSION" | \
+    "${SUDO[@]}" tee "$MOUNT/etc/openglass-release" >/dev/null
+"${SUDO[@]}" chmod 0644 "$MOUNT/etc/openglass-release"
 "${SUDO[@]}" find "$MOUNT/dev" -maxdepth 1 -type f -delete 2>/dev/null || true
 "${SUDO[@]}" sync
