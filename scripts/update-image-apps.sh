@@ -37,6 +37,7 @@ trap cleanup EXIT
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-usb-media" "$MOUNT/usr/local/sbin/lkg-usb-media"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-sway-setup" "$MOUNT/usr/local/sbin/lkg-sway-setup"
 "${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-usb-disk" "$MOUNT/usr/local/sbin/lkg-usb-disk"
+"${SUDO[@]}" install -o root -g root -m755 "$BLOBS/lkg-firstboot-storage" "$MOUNT/usr/local/sbin/lkg-firstboot-storage"
 "${SUDO[@]}" rm -f "$MOUNT/usr/local/bin/lkg-mcu-poweroff" \
     "$MOUNT/usr/local/sbin/lkg-usb-mode-watch" \
     "$MOUNT/usr/local/sbin/lkg-usb-desktop"
@@ -49,6 +50,8 @@ trap cleanup EXIT
     "$MOUNT/etc/systemd/system/lkg-mcu.service"
 "${SUDO[@]}" install -o root -g root -m644 "$BLOBS/lkg-menu.service" \
     "$MOUNT/etc/systemd/system/lkg-menu.service"
+"${SUDO[@]}" install -o root -g root -m644 "$BLOBS/dufs.service" \
+    "$MOUNT/etc/systemd/system/dufs.service"
 "${SUDO[@]}" ln -sf ../lkg-usb-mode-watch.service \
     "$MOUNT/etc/systemd/system/multi-user.target.wants/lkg-usb-mode-watch.service"
 "${SUDO[@]}" install -d "$MOUNT/etc/systemd/system/poweroff.target.wants" \
@@ -85,6 +88,7 @@ REQUIRED_PACKAGES=(
     htop
     pulsemixer
     fonts-wqy-microhei
+    fonts-noto-cjk
     ranger
     mc
     wayvnc

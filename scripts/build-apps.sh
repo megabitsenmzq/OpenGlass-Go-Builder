@@ -85,6 +85,10 @@ mkdir -p "$OUTPUT_DIR"
     "$OUTPUT_DIR/lkg-sway-setup"
 "${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-usb-disk" \
     "$OUTPUT_DIR/lkg-usb-disk"
+"${SUDO[@]}" install -m 0755 "$PROJECT_ROOT/source/packages/bsp/lkg/lkg-firstboot-storage" \
+    "$OUTPUT_DIR/lkg-firstboot-storage"
+"${SUDO[@]}" install -m 0644 "$PROJECT_ROOT/source/packages/bsp/lkg/dufs.service" \
+    "$OUTPUT_DIR/dufs.service"
 
 "${SUDO[@]}" chroot "$CHROOT_DIR" /root/lkg-app-src/lkg-menu/lkg-menu --help >/dev/null
 "${SUDO[@]}" chroot "$CHROOT_DIR" /root/lkg-app-src/lkg-player/lkg-player --help >/dev/null

@@ -61,15 +61,16 @@ if ! mountpoint -q "$DATA_MOUNT"; then
 fi
 mkdir -p "$DATA_MOUNT/media" "$DATA_MOUNT/apps" "$DATA_MOUNT/cache/thumbnails"
 
+if [ -f "$DATA_MARKER" ] &&
+   grep -qx 'overlayroot="tmpfs:recurse=0"' /etc/overlayroot.conf 2>/dev/null; then
+    exit 0
+fi
+
 cat > /etc/overlayroot.conf <<'EOF'
 overlayroot_cfgdisk="disabled"
 overlayroot="tmpfs:recurse=0"
 EOF
 rm -f /etc/update-motd.d/97-overlayroot
-
-if [ -f "$DATA_MARKER" ]; then
-    exit 0
-fi
 
 touch "$DATA_MARKER"
 sync

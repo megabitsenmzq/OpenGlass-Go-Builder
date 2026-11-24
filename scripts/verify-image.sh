@@ -57,6 +57,8 @@ test -L "$MOUNT/etc/systemd/system/multi-user.target.wants/home-lkg-data.mount"
     "$MOUNT/usr/local/sbin/lkg-wifi"
 "${SUDO[@]}" cmp "$BLOBS/lkg-wifi" "$MOUNT/usr/local/sbin/lkg-wifi"
 "${SUDO[@]}" cmp "$BLOBS/lkg-wifi-restore" "$MOUNT/usr/local/sbin/lkg-wifi-restore"
+"${SUDO[@]}" cmp "$BLOBS/lkg-usb-disk" "$MOUNT/usr/local/sbin/lkg-usb-disk"
+"${SUDO[@]}" cmp "$BLOBS/lkg-firstboot-storage" "$MOUNT/usr/local/sbin/lkg-firstboot-storage"
 "${SUDO[@]}" python3 -B -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' \
     "$MOUNT/usr/local/sbin/lkg-wifi"
 "${SUDO[@]}" grep -qx 'CONFIG_PART=/dev/mmcblk0p2' "$MOUNT/usr/local/sbin/lkg-firstboot-storage"
@@ -120,6 +122,9 @@ done
     "$MOUNT/etc/systemd/system/wpa_supplicant@wlan0.service.d/lkg.conf"
 test ! -L "$MOUNT/etc/systemd/system/multi-user.target.wants/dufs.service"
 test ! -e "$MOUNT/etc/systemd/system/multi-user.target.wants/dufs.service"
+"${SUDO[@]}" cmp "$BLOBS/dufs.service" "$MOUNT/etc/systemd/system/dufs.service"
+"${SUDO[@]}" grep -qx 'ExecStart=/usr/local/bin/dufs --bind 0.0.0.0 --port 5000 --allow-upload --allow-delete --allow-search --allow-archive /home/lkg/data' \
+    "$MOUNT/etc/systemd/system/dufs.service"
 test -f "$MOUNT/usr/share/doc/dufs/copyright"
 cmp "$BLOBS/visual.json" "$MOUNT/etc/lkg/visual-template.json"
 test ! -e "$MOUNT/etc/lkg/visual.json"
@@ -160,6 +165,7 @@ if "${SUDO[@]}" chroot "$MOUNT" bash -c \
 fi
 "${SUDO[@]}" chroot "$MOUNT" /usr/bin/gst-inspect-1.0 pipewiresink >/dev/null
 test -f "$MOUNT/usr/share/sounds/freedesktop/stereo/audio-volume-change.oga"
+test -f "$MOUNT/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 "${SUDO[@]}" chroot "$MOUNT" /usr/bin/gst-inspect-1.0 avdec_aac >/dev/null
 test -e "$MOUNT/usr/lib/aarch64-linux-gnu/libheif/plugins/libheif-libde265.so"
 "${SUDO[@]}" grep -q '^URIs: https\?://security.debian.org' "$MOUNT/etc/apt/sources.list.d/debian.sources"

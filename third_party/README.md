@@ -109,6 +109,7 @@ In addition to the minimal Armbian / Debian `trixie` base system, [`../source/co
 | `libfreetype6` | Font rendering library | FTL OR GPL-2.0-or-later |
 | `fonts-dejavu-core` | Latin UI/console fonts | Bitstream Vera / Arev (permissive) |
 | `fonts-wqy-microhei` | CJK font for Sway/Waybar/GTK | Apache-2.0 OR GPL-3.0 (with font exception) |
+| `fonts-noto-cjk` | Optional Noto Sans CJK font for external apps | SIL OFL-1.1 |
 
 ## Notes and redistribution
 

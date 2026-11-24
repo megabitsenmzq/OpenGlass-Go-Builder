@@ -12,7 +12,7 @@ SERIALCON="ttyS0"
 HAS_VIDEO_OUTPUT="yes"
 FORCE_BOOTSCRIPT_UPDATE="yes"
 EXTRAWIFI="no"
-PACKAGE_LIST_BOARD="kbd wpasupplicant sudo python3-yaml openssh-server avahi-daemon sway seatd foot fuzzel waybar thunar thunar-archive-plugin xarchiver mousepad micro imv wl-clipboard grim slurp mako-notifier libnotify-bin htop pulsemixer fonts-wqy-microhei ranger mc wayvnc unzip 7zip bzip2 xz-utils file xdg-utils openssl adwaita-icon-theme sound-theme-freedesktop ffmpeg gstreamer1.0-plugins-base gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire gstreamer1.0-tools pipewire-audio wireplumber libdrm2 libgbm1 libegl1 libgles2 libpng16-16t64 libjpeg62-turbo libheif1 libqrencode4 libglib2.0-0t64 zlib1g libfreetype6 fonts-dejavu-core dbus polkitd exfatprogs overlayroot busybox-static"
+PACKAGE_LIST_BOARD="kbd wpasupplicant sudo python3-yaml openssh-server avahi-daemon sway seatd foot fuzzel waybar thunar thunar-archive-plugin xarchiver mousepad micro imv wl-clipboard grim slurp mako-notifier libnotify-bin htop pulsemixer fonts-wqy-microhei fonts-noto-cjk ranger mc wayvnc unzip 7zip bzip2 xz-utils file xdg-utils openssl adwaita-icon-theme sound-theme-freedesktop ffmpeg gstreamer1.0-plugins-base gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pipewire gstreamer1.0-tools pipewire-audio wireplumber libdrm2 libgbm1 libegl1 libgles2 libpng16-16t64 libjpeg62-turbo libheif1 libqrencode4 libglib2.0-0t64 zlib1g libfreetype6 fonts-dejavu-core dbus polkitd exfatprogs overlayroot busybox-static"
 INCLUDE_HOME_DIR="yes"
 
 function post_family_config__lookingglass_go_sources() {
